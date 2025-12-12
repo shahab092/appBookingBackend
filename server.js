@@ -22,10 +22,8 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: "http://localhost:5173",
-  credentials: true, // Allow credentials (cookies, authorization headers)
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Explicitly list methods
-  allowedHeaders: ['Content-Type', 'Authorization'] // Explicitly list headers
+  origin: ["http://localhost:5173", "https://mern-stack-auth-drab.vercel.app"],
+  credentials: true,
 }));
 app.use(express.json());
 

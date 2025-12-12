@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
+const { googleLogin } = require('../controllers/authController');
 const User = require('../models/User');
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -43,76 +44,7 @@ const protect = async (req, res, next) => {
 };
 
 // 1. Google Login - ONLY FOR PATIENTS
-router.post('/google-login', async (req, res) => {
-  try {
-    const { credential } = req.body;
-
-    if (!credential) {
-      return res.status(400).json({ message: 'Google credential is required' });
-    }
-
-    // Verify Google token
-    const ticket = await client.verifyIdToken({
-      idToken: credential,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-
-    const payload = ticket.getPayload();
-    const { sub: googleId, email, name, picture, given_name, family_name } = payload;
-
-    // Check if user already exists
-    let user = await User.findOne({ email });
-
-    if (user) {
-      // Check if existing user is a patient
-      if (user.role !== 'patient') {
-        return res.status(403).json({ 
-          message: 'Only patients can login with Google. Please use another login method.' 
-        });
-      }
-      
-      // Update last login for existing patient
-      user.lastLogin = new Date();
-      await user.save();
-    } else {
-      // Create new PATIENT user
-      user = await User.create({
-        googleId,
-        email,
-        name,
-        firstName: given_name || name.split(' ')[0],
-        lastName: family_name || name.split(' ').slice(1).join(' '),
-        picture,
-        role: 'patient', // Force role to be patient
-        isVerified: true,
-        lastLogin: new Date()
-      });
-    }
-
-    // Generate JWT token
-    const token = generateToken(user._id);
-
-    res.status(200).json({
-      success: true,
-      user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        picture: user.picture,
-        firstName: user.firstName,
-        lastName: user.lastName
-      },
-      token
-    });
-  } catch (error) {
-    console.error('Google login error:', error);
-    res.status(401).json({ 
-      success: false,
-      message: 'Invalid Google authentication' 
-    });
-  }
-});
+router.route("/google-login").post(googleLogin);
 
 // 2. Get patient profile (protected)
 router.get('/profile', protect, isPatient, async (req, res) => {
