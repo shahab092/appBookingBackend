@@ -1,9 +1,8 @@
-
-import { asyncHandler } from "../utils/asyncHandler.js"
-import { ApiError } from "../utils/ApiError.js"
-import JWT from 'jsonwebtoken'
-import { User } from "../models/user.model.js"
-export const verifyJWT = asyncHandler(async (req, res, next) => {
+const { asyncHandler } = require("../utils/asyncHandler");
+const { ApiError } = require("../utils/ApiError");
+const JWT = require("jsonwebtoken");
+const { User } = require("../models/user.model");
+ const verifyJWT = asyncHandler(async (req, res, next) => {
     try {
         const token = req.cookies?.accessToken || req.header("Authorization")?.replace("Bearer ", "")
 
@@ -21,3 +20,5 @@ export const verifyJWT = asyncHandler(async (req, res, next) => {
         throw new ApiError(401, "invaild access token")
     }
 }) 
+
+module.exports = { verifyJWT }

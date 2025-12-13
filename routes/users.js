@@ -1,13 +1,21 @@
-import express, { Router } from "express";
-import { register, login, googleLogin, refreshAccessToken, logoutUser } from "../controllers/authController.js";
-import { verifyJWT } from "../middlewares/auth.middleware.js";
+const express = require("express");
+const router = express.Router();
 
-const router = Router();
+const {
+  register,
+  login,
+  googleLogin,
+  refreshAccessToken,
+  logoutUser,
+} = require("../controllers/authController");
 
-router.route("/register").post(register);
-router.route('/logout').post(verifyJWT, logoutUser)
-router.route('/login').post(login)
-router.route("/refresh-token").post(refreshAccessToken);
-router.route("/google-login").post(googleLogin);
+const { verifyJWT } = require("../middlewares/auth.middleware");
 
-export default router;
+// Routes
+router.post("/register", register);
+router.post("/login", login);
+router.post("/google-login", googleLogin);
+router.post("/refresh-token", refreshAccessToken);
+router.post("/logout", verifyJWT, logoutUser);
+
+module.exports = router;

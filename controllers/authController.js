@@ -1,11 +1,11 @@
 // src/controllers/auth.controller.js
-import { User } from "../models/User.js";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-import { asyncHandler } from "../utils/asyncHandler.js";
-import { ApiError } from "../utils/ApiError.js";
-import { ApiResponse } from "../utils/ApiResponse.js";
-import { OAuth2Client } from "google-auth-library";
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const { OAuth2Client } = require("google-auth-library");
+const User = require("../models/User");
+const  asyncHandler  = require("../utils/asyncHandler");
+const { ApiError } = require("../utils/ApiError");
+const { ApiResponse } = require("../utils/ApiResponse");
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -34,7 +34,7 @@ const generateRefreshToken = (user) => {
 };
 
 // Register User
-export const register = asyncHandler(async (req, res) => {
+const register = asyncHandler(async (req, res) => {
   const { name, email, password } = req.body;
   if (!name || !email || !password) throw new ApiError(400, "All fields are required");
 
@@ -62,7 +62,7 @@ export const register = asyncHandler(async (req, res) => {
 });
 
 // Login User
-export const login = asyncHandler(async (req, res) => {
+const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) throw new ApiError(400, "Email and password are required");
 
@@ -84,7 +84,7 @@ export const login = asyncHandler(async (req, res) => {
 });
 
 // Google Login
-export const googleLogin = asyncHandler(async (req, res) => {
+const googleLogin = asyncHandler(async (req, res) => {
   const { tokenId } = req.body;
   if (!tokenId) throw new ApiError(400, "Google token ID is required");
 
@@ -119,7 +119,7 @@ export const googleLogin = asyncHandler(async (req, res) => {
 });
 
 // Refresh Access Token
-export const refreshAccessToken = asyncHandler(async (req, res) => {
+const refreshAccessToken = asyncHandler(async (req, res) => {
   const refreshToken = req.cookies?.refreshToken;
   if (!refreshToken) throw new ApiError(401, "Refresh token missing");
 
@@ -140,7 +140,7 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
 });
 
 // Logout User
-export const logoutUser = asyncHandler(async (req, res) => {
+const logoutUser = asyncHandler(async (req, res) => {
   const userId = req.user?._id;
   if (!userId) throw new ApiError(401, "User not authenticated");
 
@@ -150,3 +150,10 @@ export const logoutUser = asyncHandler(async (req, res) => {
     .clearCookie("refreshToken", { httpOnly: true, secure: true, sameSite: "lax" })
     .json(new ApiResponse(200, {}, "User logged out successfully"));
 });
+
+module.exports = {
+  register,
+  login, googleLogin,
+  refreshAccessToken,
+  logoutUser,
+};

@@ -5,6 +5,7 @@ const connectDB = require('./config/database');
 const errorHandler = require('./middleware/error.middleware.js');
 const rateLimit = require('express-rate-limit');
 const authRoutes = require('./routes/authRoutes.js');
+const doctorRoute = require('./routes/doctorProfile.js');
 
 const authLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 min
@@ -28,7 +29,8 @@ app.use(cors({
 app.use(express.json());
 
 // Routes
-app.use("/api/v1/auth", authLimiter, authRoutes); 
+app.use("/api/v1/auth", authLimiter, authRoutes);
+app.use("/api/v1/doctor", doctorRoute);
 
 // Root route
 // app.get('/', (req, res) => {
@@ -38,7 +40,7 @@ app.use("/api/v1/auth", authLimiter, authRoutes);
 //     availableRoutes: ['POST /api/auth/google-login', 'GET /api/auth/profile', 'PUT /api/auth/profile']
 //   });
 // });
-// app.use(errorHandler);
+app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {

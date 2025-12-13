@@ -1,11 +1,11 @@
-import mongoose from "mongoose";
+const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema(
   {
     name: {
       type: String,
-      required: true, 
-      trim: true
+      required: true,
+      trim: true,
     },
 
     email: {
@@ -13,38 +13,56 @@ const userSchema = new mongoose.Schema(
       required: true,
       unique: true,
       lowercase: true,
-      trim: true
+      trim: true,
     },
 
     password: {
       type: String,
-      select: false, 
+      select: false,
     },
 
     googleId: {
       type: String,
-      default: null
+      default: null,
     },
 
     avatar: {
-      type: String, 
-      default:
-        "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+      type: String,
+      default: "https://cdn-icons-png.flaticon.com/512/149/149071.png",
     },
 
     provider: {
       type: String,
       enum: ["local", "google"],
-      default: "local"
+      default: "local",
     },
-
 
     refreshToken: {
       type: String,
       select: false,
+    },
+
+
+    role: {
+      type: String,
+      enum: ["patient", "doctor", "admin"],
+      default: "patient",
+    },
+
+
+    status: {
+      type: String,
+      enum: ["pending", "active", "rejected"],
+      default: null,
+    },
+
+    doctorProfile: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "DoctorProfile",
+      default: null,
     }
   },
   { timestamps: true }
 );
 
-export const User = mongoose.model("User", userSchema);
+module.exports = mongoose.model("User", userSchema);
