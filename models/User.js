@@ -53,7 +53,7 @@ const userSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: ["pending", "active", "rejected"],
-      default: null,
+      default: "pending",
     },
 
     doctorProfile: {

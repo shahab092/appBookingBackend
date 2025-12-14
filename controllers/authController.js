@@ -3,9 +3,9 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { OAuth2Client } = require("google-auth-library");
 const User = require("../models/User");
-const  asyncHandler  = require("../utils/asyncHandler");
+const asyncHandler = require("../utils/asyncHandler");
 const { ApiError } = require("../utils/ApiError");
-const { ApiResponse } = require("../utils/ApiResponse");
+const ApiResponse = require('../utils/ApiResponse');
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -113,6 +113,9 @@ const googleLogin = asyncHandler(async (req, res) => {
   user.refreshToken = refreshToken;
   await user.save();
 
+  // res.status(200).json(
+  //   new ApiResponse(200, { user, accessToken }, "Google login successful")
+  // );
   res.status(200).json(
     new ApiResponse(200, { user, accessToken }, "Google login successful")
   );
