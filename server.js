@@ -16,6 +16,7 @@ const authLimiter = rateLimit({
 
 // Initialize app
 const app = express();
+connectDB();
 
 // Middleware
 app.use(cors({
