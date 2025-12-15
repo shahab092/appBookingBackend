@@ -93,33 +93,67 @@ const googleLogin = asyncHandler(async (req, res) => {
     audience: process.env.GOOGLE_CLIENT_ID,
   });
 
-  const { email, name, picture, sub: googleId } = ticket.getPayload();
-  if (!email) throw new ApiError(400, "Google account has no email");
+  const payload = ticket.getPayload();
 
-  let user = await User.findOne({ email });
+  console.log("GOOGLE PAYLOAD:", payload);
+
+  const email = payload?.email;
+  const googleId = payload?.sub;
+  const picture = payload?.picture;
+  const fullName = payload?.name;
+
+  if (!email) {
+    throw new ApiError(400, "Google account has no email");
+  }
+
+  // ✅ FORCE SAFE VALUES
+  let firstName = "Google";
+  let lastName = "User";
+
+  if (typeof fullName === "string" && fullName.trim()) {
+    const parts = fullName.trim().split(/\s+/);
+    firstName = parts[0] || "Google";
+    lastName = parts.slice(1).join(" ") || "User";
+  }
+
+  console.log("FINAL NAME VALUES:", { firstName, lastName });
+
+  let user = await User.findOne({ email }).select("+refreshToken");
+
   if (!user) {
     user = await User.create({
-      name,
       email,
+      firstName,
+      lastName,
       googleId,
-      avatar: picture,
       provider: "google",
+      profilePicture: picture,
+      emailVerified: true,
+      role: "patient",
     });
+  } else {
+    user.googleId = user.googleId || googleId;
+    user.provider = "google";
+    user.emailVerified = true;
+    if (!user.profilePicture && picture) {
+      user.profilePicture = picture;
+    }
+    await user.save();
   }
 
   const accessToken = generateAccessToken(user);
   const refreshToken = generateRefreshToken(user);
 
   user.refreshToken = refreshToken;
+  user.lastLogin = new Date();
   await user.save();
 
-  // res.status(200).json(
-  //   new ApiResponse(200, { user, accessToken }, "Google login successful")
-  // );
   res.status(200).json(
     new ApiResponse(200, { user, accessToken }, "Google login successful")
   );
 });
+
+
 
 // Refresh Access Token
 const refreshAccessToken = asyncHandler(async (req, res) => {

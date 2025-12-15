@@ -4,7 +4,4 @@ const asyncHandler = (reqHandler) => {
     }
 }
 
-
-
-
 module.exports = asyncHandler;
