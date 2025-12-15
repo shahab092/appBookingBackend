@@ -1,24 +1,20 @@
 const express = require('express');
-const dotenv = require('dotenv');
 const cors = require('cors');
 const connectDB = require('./config/database');
+const authRoutes = require('./routes/authRoutes');
+const doctorRoute = require('./routes/doctor.js');
 const errorHandler = require('./middleware/error.middleware.js');
 const rateLimit = require('express-rate-limit');
-const authRoutes = require('./routes/authRoutes.js');
-const doctorRoute = require('./routes/doctorProfile.js');
 
+// Rate limiter
 const authLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 min
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
 });
-// Load env vars
-dotenv.config();
 
-// Connect to database
-connectDB();
-
+// Initialize app
 const app = express();
 
 // Middleware
@@ -27,23 +23,34 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json());
-
-// Routes
 app.use("/api/v1/auth", authLimiter, authRoutes);
-app.use("/api/doctor", require('./routes/doctor.js'));
+app.use("/api/doctor", doctorRoute);
 
 // Root route
 app.get('/', (req, res) => {
-  res.json({ 
+  res.json({
     message: 'Patient Authentication API',
     version: '1.0.0',
-    availableRoutes: ['POST /api/auth/google-login', 'GET /api/auth/profile', 'PUT /api/auth/profile']
+    availableRoutes: [
+      'POST /api/v1/auth/google-login',
+      'GET /api/v1/auth/profile',
+      'PUT /api/v1/auth/profile'
+    ]
   });
 });
-app.use(errorHandler);
-const PORT = process.env.PORT || 7000 ;
 
-app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-  console.log(`🌐 Google OAuth for Patients Only`);
-});
+// Error handling middleware
+app.use(errorHandler);
+
+// **Export as serverless function**
+module.exports = async (req, res) => {
+  try {
+    // Connect to DB (cached connection)
+    await connectDB();
+    // Handle request
+    return app(req, res);
+  } catch (err) {
+    console.error('Serverless function error:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+};
