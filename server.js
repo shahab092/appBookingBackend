@@ -19,7 +19,6 @@ const authLimiter = rateLimit({
 // Initialize app
 const app = express();
 dotenv.config();
-connectDB();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors({
@@ -38,7 +37,7 @@ app.get("/", (req, res) => {
 
 const startServer = async () => {
   try {
-    await dataBaseconnect();
+    await connectDB();
     app.listen(PORT, () => {
       console.log(`🚀 Server is running on port ${PORT}`);
     });
