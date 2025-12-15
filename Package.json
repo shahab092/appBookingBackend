@@ -4,9 +4,8 @@
   "description": "A Node.js appointment booking system API",
   "type": "commonjs",
   "main": "server.js",
-  "scripts": {
-    "start": "node server",
-    "vercel-build": "npm install",
+    "scripts": {
+    "start": "node server.js",
     "dev": "nodemon server.js"
   },
   "dependencies": {
