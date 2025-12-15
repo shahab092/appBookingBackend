@@ -44,14 +44,4 @@ app.get('/', (req, res) => {
 app.use(errorHandler);
 
 // **Export as serverless function**
-module.exports = async (req, res) => {
-  try {
-    // Connect to DB (cached connection)
-    await connectDB();
-    // Handle request
-    return app(req, res);
-  } catch (err) {
-    console.error('Serverless function error:', err);
-    res.status(500).json({ error: 'Internal Server Error' });
-  }
-};
+
