@@ -21,7 +21,7 @@ const generateAccessToken = (user) => {
       email: user.email,
       avatar: user.avatar || null,
       provider: user.provider,
-       role: user.role,  
+      role: user.role,
     },
     process.env.ACCESS_TOKEN_SECRET,
     { expiresIn: process.env.ACCESS_TOKEN_EXPIRY || "15m" }
@@ -126,7 +126,7 @@ const login = asyncHandler(async (req, res) => {
   await user.save();
 
   res.status(200).json(
-    new ApiResponse(200, {  accessToken }, "Login successful")
+    new ApiResponse(200, { accessToken }, "Login successful")
   );
 });
 
@@ -158,10 +158,17 @@ exports.updateUserProfile = async (req, res) => {
   }
 };
 
+const { OAuth2Client } = require("google-auth-library");
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
 const googleLogin = asyncHandler(async (req, res) => {
   const { tokenId } = req.body;
-  if (!tokenId) throw new ApiError(400, "Google token ID is required");
 
+  if (!tokenId) {
+    throw new ApiError(400, "Google token ID is required");
+  }
+
+  // 1️⃣ Verify Google token
   const ticket = await client.verifyIdToken({
     idToken: tokenId,
     audience: process.env.GOOGLE_CLIENT_ID,
@@ -169,29 +176,21 @@ const googleLogin = asyncHandler(async (req, res) => {
 
   const payload = ticket.getPayload();
 
-  console.log("GOOGLE PAYLOAD:", payload);
-
-  const email = payload?.email;
-  const googleId = payload?.sub;
-  const picture = payload?.picture;
-  const fullName = payload?.name;
-
-  if (!email) {
-    throw new ApiError(400, "Google account has no email");
+  if (!payload || !payload.email) {
+    throw new ApiError(400, "Invalid Google token");
   }
 
-  // ✅ FORCE SAFE VALUES
-  let firstName = "Google";
-  let lastName = "User";
+  const email = payload.email;
+  const googleId = payload.sub;
+  const picture = payload.picture;
+  const fullName = payload.name || "Google User";
 
-  if (typeof fullName === "string" && fullName.trim()) {
-    const parts = fullName.trim().split(/\s+/);
-    firstName = parts[0] || "Google";
-    lastName = parts.slice(1).join(" ") || "User";
-  }
+  // 2️⃣ Safely split name
+  const parts = fullName.trim().split(/\s+/);
+  const firstName = parts[0] || "Google";
+  const lastName = parts.slice(1).join(" ") || "User";
 
-  console.log("FINAL NAME VALUES:", { firstName, lastName });
-
+  // 3️⃣ Find or create user
   let user = await User.findOne({ email }).select("+refreshToken");
 
   if (!user) {
@@ -203,18 +202,23 @@ const googleLogin = asyncHandler(async (req, res) => {
       provider: "google",
       profilePicture: picture,
       emailVerified: true,
-      role: "patient",
+      role: "patient", // ✅ NOW VALID
+      status: "active",
     });
   } else {
+    // Update existing user safely
     user.googleId = user.googleId || googleId;
     user.provider = "google";
     user.emailVerified = true;
+
     if (!user.profilePicture && picture) {
       user.profilePicture = picture;
     }
+
     await user.save();
   }
 
+  // 4️⃣ Generate tokens
   const accessToken = generateAccessToken(user);
   const refreshToken = generateRefreshToken(user);
 
@@ -222,10 +226,25 @@ const googleLogin = asyncHandler(async (req, res) => {
   user.lastLogin = new Date();
   await user.save();
 
+  // 5️⃣ Send response
   res.status(200).json(
-    new ApiResponse(200, { user, accessToken }, "Google login successful")
+    new ApiResponse(
+      200,
+      {
+        accessToken,
+        user: {
+          id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          role: user.role,
+        },
+      },
+      "Google login successful"
+    )
   );
 });
+
 module.exports = {
   createUser,
   login,

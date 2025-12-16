@@ -32,6 +32,7 @@ app.use(
     origin: [
       "http://localhost:5173",
       "https://mern-stack-auth-drab.vercel.app",
+      "https://hostpital-managment.vercel.app"
     ],
     credentials: true,
   })
