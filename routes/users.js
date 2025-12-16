@@ -14,7 +14,7 @@ const {
 // Routes
 router.post("/register", createUser);
 router.post("/login", login);
-// router.post("/google-login", googleLogin);
+router.post("/google-login", googleLogin);
 // router.post("/refresh-token", refreshAccessToken);
 // router.post("/logout", verifyJWT, logoutUser);
 

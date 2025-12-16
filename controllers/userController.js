@@ -158,8 +158,76 @@ exports.updateUserProfile = async (req, res) => {
   }
 };
 
+const googleLogin = asyncHandler(async (req, res) => {
+  const { tokenId } = req.body;
+  if (!tokenId) throw new ApiError(400, "Google token ID is required");
 
+  const ticket = await client.verifyIdToken({
+    idToken: tokenId,
+    audience: process.env.GOOGLE_CLIENT_ID,
+  });
+
+  const payload = ticket.getPayload();
+
+  console.log("GOOGLE PAYLOAD:", payload);
+
+  const email = payload?.email;
+  const googleId = payload?.sub;
+  const picture = payload?.picture;
+  const fullName = payload?.name;
+
+  if (!email) {
+    throw new ApiError(400, "Google account has no email");
+  }
+
+  // ✅ FORCE SAFE VALUES
+  let firstName = "Google";
+  let lastName = "User";
+
+  if (typeof fullName === "string" && fullName.trim()) {
+    const parts = fullName.trim().split(/\s+/);
+    firstName = parts[0] || "Google";
+    lastName = parts.slice(1).join(" ") || "User";
+  }
+
+  console.log("FINAL NAME VALUES:", { firstName, lastName });
+
+  let user = await User.findOne({ email }).select("+refreshToken");
+
+  if (!user) {
+    user = await User.create({
+      email,
+      firstName,
+      lastName,
+      googleId,
+      provider: "google",
+      profilePicture: picture,
+      emailVerified: true,
+      role: "patient",
+    });
+  } else {
+    user.googleId = user.googleId || googleId;
+    user.provider = "google";
+    user.emailVerified = true;
+    if (!user.profilePicture && picture) {
+      user.profilePicture = picture;
+    }
+    await user.save();
+  }
+
+  const accessToken = generateAccessToken(user);
+  const refreshToken = generateRefreshToken(user);
+
+  user.refreshToken = refreshToken;
+  user.lastLogin = new Date();
+  await user.save();
+
+  res.status(200).json(
+    new ApiResponse(200, { user, accessToken }, "Google login successful")
+  );
+});
 module.exports = {
   createUser,
   login,
+  googleLogin
 }
