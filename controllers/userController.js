@@ -21,6 +21,7 @@ const generateAccessToken = (user) => {
       email: user.email,
       avatar: user.avatar || null,
       provider: user.provider,
+       role: user.role,  
     },
     process.env.ACCESS_TOKEN_SECRET,
     { expiresIn: process.env.ACCESS_TOKEN_EXPIRY || "15m" }
@@ -125,7 +126,7 @@ const login = asyncHandler(async (req, res) => {
   await user.save();
 
   res.status(200).json(
-    new ApiResponse(200, { user, accessToken }, "Login successful")
+    new ApiResponse(200, {  accessToken }, "Login successful")
   );
 });
 
