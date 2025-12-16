@@ -7,10 +7,6 @@ const appointmentSchema = new mongoose.Schema({
     ref: "User",
     required: true
   },
-  doctorName: {
-    type: String,
-    required: false
-  },
   department: {
     type: String,
     required: true
