@@ -44,7 +44,7 @@ app.use("/api/auth", authLimiter, require("./routes/users.js"));
 app.use("/api/doctor", doctorRoute);
 
 app.get("/", (req, res) => {
-  res.send("API is running 🚀");
+  res.send("API is running1 🚀");
 });
 
 // ❗ Create HTTP server (REQUIRED for socket.io)
