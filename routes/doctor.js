@@ -7,10 +7,10 @@ const { authenticate, authorize } = require('../middleware/auth');
 router.post('/register', registerDoctor);
 
 // GET /api/doctors - Get all doctors
-// router.get('/', getDoctors);
+router.get('/', getDoctors);
 
 // // PATCH /api/doctors/:id/status - Update doctor status
-// router.patch('/:id/status', authenticate, authorize('admin', 'superadmin'), updateStatus);
+router.patch('/:id/status', updateStatus);
 
 // // GET /api/doctors/confirm - Confirm doctor registration via email token
 // router.get('/confirm', confirmDoctor);

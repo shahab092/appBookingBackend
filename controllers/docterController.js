@@ -55,6 +55,7 @@ const registerDoctor = async (req, res, next) => {
       role: "doctor",
       address,
       doctorProfile,
+      status: "pending",
     });
 
     // 4️⃣ Return success response
@@ -76,47 +77,92 @@ const registerDoctor = async (req, res, next) => {
 
 
 // PATCH /api/doctors/:id/status
-// async function updateStatus(req, res) {
-//     try {
-//         const { id } = req.params;
-//         const { status } = req.body;
-//         if (!status) return res.status(400).json({ success: false, error: 'status required' });
+async function updateStatus(req, res) {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
 
-//         const doctor = await Doctor.findById(id);
-//         if (!doctor) return res.status(404).json({ success: false, error: 'Doctor not found' });
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        error: "status required",
+      });
+    }
 
-//         const prevStatus = doctor.status;
-//         doctor.status = status;
+    const doctor = await User.findById(id);
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        error: "Doctor not found",
+      });
+    }
 
-//         // when moving from pending -> inprogress, generate confirmation token and send email
-//         if (prevStatus === 'pending' && status === 'inprogress') {
-//             const token = crypto.randomBytes(32).toString('hex');
-//             doctor.confirmationToken = token;
-//             doctor.tokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
-//             await doctor.save();
+    // ✅ EMAIL EXISTENCE CHECK
+    if (!doctor.email) {
+      return res.status(400).json({
+        success: false,
+        error: "Doctor email not found",
+      });
+    }
 
-//             // build confirmation link - prefer BACKEND_URL env var
-//             const backend = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
-//             const link = `${backend}/api/doctors/confirm?token=${token}&id=${doctor._id}`;
+    // ✅ EMAIL FORMAT VALIDATION
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(doctor.email)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid email address",
+      });
+    }
 
-//             const mailOptions = {
-//                 from: process.env.SMTP_FROM || process.env.SMTP_USER,
-//                 to: doctor.email,
-//                 subject: 'Doctor confirmation required',
-//                 text: `Hello ${doctor.name || ''},\n\nPlease confirm your registration by clicking the link: ${link}\n\nIf you did not request this, ignore.`,
-//                 html: `<p>Hello ${doctor.name || ''},</p><p>Please confirm your registration by clicking the link below:</p><p><a href="${link}">Confirm registration</a></p>`
-//             };
+    const prevStatus = doctor.status;
+    doctor.status = status;
 
-//             await transporter.sendMail(mailOptions);
-//             return res.json({ success: true, message: 'Status updated and confirmation email sent' });
-//         }
+    // when moving from pending -> inprogress, generate confirmation token and send email
+    if (prevStatus === "pending" && status === "inprogress") {
+      const token = crypto.randomBytes(32).toString("hex");
 
-//         await doctor.save();
-//         return res.json({ success: true, data: doctor });
-//     } catch (err) {
-//         return res.status(400).json({ success: false, error: err.message });
-//     }
-// }
+      doctor.confirmationToken = token;
+      doctor.tokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+      await doctor.save();
+
+      const backend =
+        process.env.BACKEND_URL || `${req.protocol}://${req.get("host")}`;
+      const link = `${backend}/api/doctors/confirm?token=${token}&id=${doctor._id}`;
+
+      const mailOptions = {
+        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+        to: doctor.email,
+        subject: "Doctor confirmation required",
+        text: `Hello ${doctor.firstName || ""},\n\nPlease confirm your registration by clicking the link:\n${link}\n\nIf you did not request this, ignore.`,
+        html: `
+          <p>Hello ${doctor.firstName || ""},</p>
+          <p>Please confirm your registration by clicking the link below:</p>
+          <p><a href="${link}">Confirm registration</a></p>
+        `,
+      };
+
+      await transporter.sendMail(mailOptions);
+
+      return res.json({
+        success: true,
+        message: "Status updated and confirmation email sent",
+      });
+    }
+
+    await doctor.save();
+
+    return res.json({
+      success: true,
+      data: doctor,
+    });
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      error: err.message,
+    });
+  }
+}
+
 
 // // GET /api/doctors/confirm?token=...&id=...
 // async function confirmDoctor(req, res) {
@@ -180,24 +226,52 @@ const registerDoctor = async (req, res, next) => {
 // }
 
 // // GET /api/doctors
-// async function getDoctors(req, res) {
-//     try {
-//         // Find all approved, available, and non-deleted doctors.
-//         // Only return the fields needed for the booking modal.
-//         const doctors = await Doctor.find({
-//             status: 'approved',
-//             isAvailable: true,
-//             deleted: false
-//         }).select('name specialization department');
-//         return res.status(200).json({ success: true, data: doctors });
-//     } catch (err) {
-//         return res.status(500).json({ success: false, error: err.message });
-//     }
-// }
+const getDoctors = async (req, res, next) => {
+  try {
+    const { status } = req.query;
+
+    // optional validation
+    const allowedStatuses = [
+      "pending",
+      "active",
+      "rejected",
+      "suspended",
+      "inactive",
+      "approved",
+    ];
+
+    if (status && !allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status value",
+      });
+    }
+
+    const filter = {
+      role: "doctor",
+    };
+
+    if (status) {
+      filter.status = status;
+    }
+
+    const doctors = await User.find(filter)
+      .select("firstName lastName email phoneNumber status doctorProfile")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: doctors.length,
+      data: doctors,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 module.exports = {
     registerDoctor,
-    // updateStatus,
+    updateStatus,
     // confirmDoctor,
-    // getDoctors
+    getDoctors
 };

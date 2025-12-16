@@ -25,9 +25,11 @@ app.use(cors({
   origin: ["http://localhost:5173", "https://mern-stack-auth-drab.vercel.app"],
   credentials: true,
 }));
+
+
 // app.use(cookieParser());
 app.use(express.json());
-app.use("/api/v1/auth", authLimiter, authRoutes);
+app.use("/api/auth", authLimiter, require("./routes/users.js"));
 app.use("/api/doctor", doctorRoute);
 
 
