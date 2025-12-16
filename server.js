@@ -16,7 +16,7 @@ dotenv.config();
 
 // Initialize app
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 7000;
 
 // Rate limiter
 const authLimiter = rateLimit({
