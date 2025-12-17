@@ -13,6 +13,6 @@ router.get('/', getDoctors);
 router.patch('/:id/status', updateStatus);
 
 // // GET /api/doctors/confirm - Confirm doctor registration via email token
-// router.get('/confirm', confirmDoctor);
+router.get('/confirm', confirmDoctor);
 
 module.exports = router;

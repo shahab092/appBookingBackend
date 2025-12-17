@@ -42,6 +42,27 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
 
+    // ================= DOCTOR CONFIRMATION FIELDS =================
+    doctorConfirmationToken: {
+      type: String,
+      select: false,  // Don't return in queries by default
+    },
+
+    doctorTokenExpiresAt: {
+      type: Date,
+      select: false,
+    },
+
+    doctorConfirmedAt: {
+      type: Date,
+    },
+
+    isDoctorConfirmed: {
+      type: Boolean,
+      default: false,
+    },
+    // =============================================================
+
     firstName: {
       type: String,
       required: true,
@@ -100,7 +121,7 @@ const userSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["pending", "active", "rejected", "suspended", "inactive","approved"],
+      enum: ["pending", "active", "rejected","inprogress", "suspended", "inactive","approved"],
       default: "active",
     },
 
@@ -292,6 +313,8 @@ userSchema.virtual("fullAddress").get(function () {
 
 // ================= INDEXES =================
 userSchema.index({ email: 1 });
+userSchema.index({ role: 1, status: 1 }); // Added for better query performance
+userSchema.index({ doctorConfirmationToken: 1 }); // Added for confirmation lookups
 
 // ================= MODEL REGISTRATION (FIX DUPLICATE BUG) =================
 const User = mongoose.models.User || mongoose.model("User", userSchema);

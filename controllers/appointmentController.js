@@ -20,30 +20,30 @@ const bookAppointment = asyncHandler(async (req, res) => {
   }
 
   // Check if doctor is available for the requested slot
-  const slotAvailable = doctor.doctorProfile.availableSlots.some(
-    (slot) =>
-      slot.isActive &&
-      slot.startTime === timeSlot.startTime &&
-      slot.endTime === timeSlot.endTime &&
-      slot.dayOfWeek === new Date(date).getDay()
-  );
+  // const slotAvailable = doctor.doctorProfile.availableSlots.some(
+  //   (slot) =>
+  //     slot.isActive &&
+  //     slot.startTime === timeSlot.startTime &&
+  //     slot.endTime === timeSlot.endTime &&
+  //     slot.dayOfWeek === new Date(date).getDay()
+  // );
 
-  if (!slotAvailable) {
-    throw new ApiError(400, "Doctor not available at this time");
-  }
+  // if (!slotAvailable) {
+  //   throw new ApiError(400, "Doctor not available at this time");
+  // }
 
-  // Optional: Check for conflicting appointments
-  const conflict = await Appointment.findOne({
-    doctor: doctorId,
-    date,
-    "timeSlot.startTime": timeSlot.startTime,
-    "timeSlot.endTime": timeSlot.endTime,
-    status: { $in: ["pending", "confirmed"] },
-  });
+  // // Optional: Check for conflicting appointments
+  // const conflict = await Appointment.findOne({
+  //   doctor: doctorId,
+  //   date,
+  //   "timeSlot.startTime": timeSlot.startTime,
+  //   "timeSlot.endTime": timeSlot.endTime,
+  //   status: { $in: ["pending", "confirmed"] },
+  // });
 
-  if (conflict) {
-    throw new ApiError(400, "This time slot is already booked");
-  }
+  // if (conflict) {
+  //   throw new ApiError(400, "This time slot is already booked");
+  // }
 
   const appointment = await Appointment.create({
     patient: patientId,
