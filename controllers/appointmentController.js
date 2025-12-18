@@ -47,10 +47,10 @@ const getPatientAppointments = asyncHandler(async (req, res) => {
   const { status, date, upcomingOnly, pastOnly } = req.query;
 
   // Verify patient exists
-  const patientExists = await User.exists({ 
-    _id: patientId, 
+  const patientExists = await User.exists({
+    _id: patientId,
     role: "patient",
-    isActive: true 
+    isActive: true
   });
 
   if (!patientExists) {
@@ -58,9 +58,9 @@ const getPatientAppointments = asyncHandler(async (req, res) => {
   }
 
   // Build filter
-  const filter = { 
-    patientId: patientId, 
-    isDeleted: false 
+  const filter = {
+    patientId: patientId,
+    isDeleted: false
   };
 
   if (status) filter.status = status;
@@ -83,7 +83,7 @@ const getPatientAppointments = asyncHandler(async (req, res) => {
       path: "doctorId",
       select: "firstName lastName email phoneNumber profilePicture doctorProfile role",
       // The match here is checking the User document
-      match: { 
+      match: {
         role: "doctor",           // ✅ This user must be a doctor
         isActive: true,
         status: { $in: ["active", "approved"] }
@@ -101,7 +101,7 @@ const getPatientAppointments = asyncHandler(async (req, res) => {
 
   const appointmentsWithDetails = validAppointments.map(appointment => {
     const appointmentObj = appointment.toObject();
-    
+
     // Add patient info
     if (patient) {
       appointmentObj.patientInfo = {
@@ -118,7 +118,7 @@ const getPatientAppointments = asyncHandler(async (req, res) => {
     return appointmentObj;
   });
 
-  res.json(new ApiResponse(200,appointmentsWithDetails, "Patient appointments fetched", ));
+  res.json(new ApiResponse(200, appointmentsWithDetails, "Patient appointments fetched",));
 });
 
 // ================= GET DOCTOR APPOINTMENTS =================
@@ -138,9 +138,9 @@ const getDoctorAppointments = asyncHandler(async (req, res) => {
   }
 
   // Build filter - doctorId matches your schema field name
-  const filter = { 
-    doctorId: doctorId, 
-    isDeleted: false 
+  const filter = {
+    doctorId: doctorId,
+    isDeleted: false
   };
 
   if (status) {
@@ -157,7 +157,7 @@ const getDoctorAppointments = asyncHandler(async (req, res) => {
       select: "firstName lastName email phoneNumber profilePicture patientProfile"
     })
     .sort({ date: 1, timeSlot: 1 }); // Show earliest appointments first
-  res.json(new ApiResponse(200,appointments, "Doctor appointments fetched", ));
+  res.json(new ApiResponse(200, appointments, "Doctor appointments fetched",));
 });
 
 // ================= UPDATE APPOINTMENT STATUS =================
@@ -182,13 +182,13 @@ const updateAppointmentStatus = asyncHandler(async (req, res) => {
 
   // Update status
   appointment.status = status;
-  
+
   // Mark as deleted if cancelled (soft delete)
   if (status === "cancelled") {
     appointment.isDeleted = true;
     appointment.deletedAt = new Date();
   }
-  
+
   await appointment.save();
 
   res.json(new ApiResponse(true, "Appointment status updated", appointment));
