@@ -135,7 +135,7 @@ const getDoctorAppointments = asyncHandler(async (req, res) => {
     .sort({ date: 1, timeSlot: 1 }); // Show earliest appointments first
 
   res.json(new ApiResponse(true, "Doctor appointments fetched", appointments));
-});s
+});
 
 // ================= UPDATE APPOINTMENT STATUS =================
 const updateAppointmentStatus = asyncHandler(async (req, res) => {
