@@ -46,55 +46,79 @@ const getPatientAppointments = asyncHandler(async (req, res) => {
   const { patientId } = req.params;
   const { status, date, upcomingOnly, pastOnly } = req.query;
 
-  // Build filter - patientId matches your schema field name
+  // Verify patient exists
+  const patientExists = await User.exists({ 
+    _id: patientId, 
+    role: "patient",
+    isActive: true 
+  });
+
+  if (!patientExists) {
+    throw new ApiError(404, "Patient not found");
+  }
+
+  // Build filter
   const filter = { 
     patientId: patientId, 
     isDeleted: false 
   };
 
-  // Filter by status if provided
-  if (status) {
-    filter.status = status;
-  }
+  if (status) filter.status = status;
+  if (date) filter.date = date;
 
-  // Filter by date if provided
-  if (date) {
-    filter.date = date;
-  }
-
-  // Filter for upcoming appointments (today and future)
   if (upcomingOnly === 'true') {
     const today = new Date().toISOString().split('T')[0];
     filter.date = { $gte: today };
-    filter.status = { $in: ["booked"] }; // Only show booked upcoming appointments
+    filter.status = { $in: ["booked"] };
   }
 
-  // Filter for past appointments
   if (pastOnly === 'true') {
     const today = new Date().toISOString().split('T')[0];
     filter.date = { $lt: today };
   }
 
+  // Get appointments - populate doctorId which references User collection
   const appointments = await Appointment.find(filter)
     .populate({
       path: "doctorId",
       select: "firstName lastName email phoneNumber profilePicture doctorProfile role",
+      // The match here is checking the User document
       match: { 
-        role: "doctor",
+        role: "doctor",           // ✅ This user must be a doctor
         isActive: true,
         status: { $in: ["active", "approved"] }
       }
     })
-    .populate({
-      path: "patientId",
-      select: "firstName lastName email phoneNumber profilePicture patientProfile role"
-    })
-    .sort({ date: 1, timeSlot: 1 }); // Sort chronologically
+    .sort({ date: 1, timeSlot: 1 });
 
-  // Filter out appointments where doctor might be deactivated or not found
+  // Filter out appointments where the populated doctorId is null
+  // (meaning either the user doesn't exist or isn't a doctor)
   const validAppointments = appointments.filter(app => app.doctorId !== null);
 
-  res.json(new ApiResponse(true, "Patient appointments fetched", validAppointments));
+  // Get patient details once
+  const patient = await User.findById(patientId)
+    .select("firstName lastName email phoneNumber profilePicture");
+
+  const appointmentsWithDetails = validAppointments.map(appointment => {
+    const appointmentObj = appointment.toObject();
+    
+    // Add patient info
+    if (patient) {
+      appointmentObj.patientInfo = {
+        id: patient._id,
+        firstName: patient.firstName,
+        lastName: patient.lastName,
+        fullName: patient.fullName,
+        email: patient.email,
+        phoneNumber: patient.phoneNumber,
+        profilePicture: patient.profilePicture
+      };
+    }
+
+    return appointmentObj;
+  });
+
+  res.json(new ApiResponse(true, "Patient appointments fetched", appointmentsWithDetails));
 });
 
 // ================= GET DOCTOR APPOINTMENTS =================
