@@ -6,6 +6,7 @@ const { Server } = require("socket.io");
 
 const connectDB = require("./config/database");
 const doctorRoute = require("./routes/doctor.js");
+const appointmentRoute = require("./routes/appointment.js");
 const errorHandler = require("./middleware/error.middleware.js");
 const rateLimit = require("express-rate-limit");
 
@@ -43,6 +44,7 @@ app.use(express.json());
 // Routes
 app.use("/api/auth", authLimiter, require("./routes/users.js"));
 app.use("/api/doctor", doctorRoute);
+app.use("/api/appointment", appointmentRoute);
 
 app.get("/", (req, res) => {
   res.send("API is running1 🚀");
