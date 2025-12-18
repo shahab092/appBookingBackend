@@ -6,7 +6,12 @@ const ApiResponse = require("../utils/ApiResponse");
 
 // ================= BOOK APPOINTMENT =================
 const bookAppointment = asyncHandler(async (req, res) => {
-  const { patientId, doctorId, date, timeSlot, reason } = req.body;
+  const { patientId, doctorId, date, timeSlot, reason, department } = req.body;
+
+  // Validate required fields
+  if (!patientId || !doctorId || !date || !timeSlot || !department) {
+    throw new ApiError(400, "Missing required fields");
+  }
 
   // Validate doctor & patient
   const doctor = await User.findById(doctorId);
@@ -19,43 +24,23 @@ const bookAppointment = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Patient not found");
   }
 
-  // Check if doctor is available for the requested slot
-  // const slotAvailable = doctor.doctorProfile.availableSlots.some(
-  //   (slot) =>
-  //     slot.isActive &&
-  //     slot.startTime === timeSlot.startTime &&
-  //     slot.endTime === timeSlot.endTime &&
-  //     slot.dayOfWeek === new Date(date).getDay()
-  // );
+  // Get department from doctor if not provided
+  const appointmentDepartment = department || doctor.doctorProfile.specialization;
 
-  // if (!slotAvailable) {
-  //   throw new ApiError(400, "Doctor not available at this time");
-  // }
-
-  // // Optional: Check for conflicting appointments
-  // const conflict = await Appointment.findOne({
-  //   doctor: doctorId,
-  //   date,
-  //   "timeSlot.startTime": timeSlot.startTime,
-  //   "timeSlot.endTime": timeSlot.endTime,
-  //   status: { $in: ["pending", "confirmed"] },
-  // });
-
-  // if (conflict) {
-  //   throw new ApiError(400, "This time slot is already booked");
-  // }
-
+  // Create appointment with CORRECT field names
   const appointment = await Appointment.create({
-    patient: patientId,
-    doctor: doctorId,
+    patientId,        // ✅ Correct: patientId (not patient)
+    patientName: patient.fullName || `${patient.firstName} ${patient.lastName}`,
+    patientEmail: patient.email,
+    doctorId,         // ✅ Correct: doctorId (not doctor)
+    department: appointmentDepartment,
     date,
     timeSlot,
-    reason,
+    reason: reason || "General consultation"
   });
 
   res.status(201).json(new ApiResponse(true, "Appointment booked successfully", appointment));
 });
-
 // ================= GET PATIENT APPOINTMENTS =================
 const getPatientAppointments = asyncHandler(async (req, res) => {
   const { patientId } = req.params;
