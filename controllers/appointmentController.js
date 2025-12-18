@@ -56,9 +56,23 @@ const getPatientAppointments = asyncHandler(async (req, res) => {
 const getDoctorAppointments = asyncHandler(async (req, res) => {
   const { doctorId } = req.params;
 
-  const appointments = await Appointment.find({ doctor: doctorId })
-    .populate("patient", "firstName lastName patientProfile")
-    .sort({ date: 1 });
+  // Check if doctor exists and is actually a doctor
+  const doctor = await User.findOne({
+    _id: doctorId,
+    role: "doctor",
+    status: { $in: ["active", "approved"] }
+  });
+
+  if (!doctor) {
+    throw new ApiError(404, "Doctor not found");
+  }
+
+  const appointments = await Appointment.find({ 
+    doctorId: doctorId,
+    isDeleted: false 
+  })
+    .populate("patientId", "firstName lastName email profilePicture")
+    .sort({ date: 1, timeSlot: 1 });
 
   res.json(new ApiResponse(true, "Doctor appointments fetched", appointments));
 });
