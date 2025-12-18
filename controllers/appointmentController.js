@@ -118,7 +118,7 @@ const getPatientAppointments = asyncHandler(async (req, res) => {
     return appointmentObj;
   });
 
-  res.json(new ApiResponse(true, "Patient appointments fetched", appointmentsWithDetails));
+  res.json(new ApiResponse(200,appointmentsWithDetails, "Patient appointments fetched", ));
 });
 
 // ================= GET DOCTOR APPOINTMENTS =================
