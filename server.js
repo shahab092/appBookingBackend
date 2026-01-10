@@ -44,7 +44,7 @@ app.use(express.json());
 // Routes
 app.use("/api/auth", authLimiter, require("./routes/users.js"));
 app.use("/api/doctor", doctorRoute);
-app.use("/api/appointment", appointmentRoute);
+app.use("/api/appointments", appointmentRoute);
 
 app.get("/", (req, res) => {
   res.send("API is running1 🚀");
