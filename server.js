@@ -7,6 +7,7 @@ const { Server } = require("socket.io");
 const connectDB = require("./config/database");
 const doctorRoute = require("./routes/doctor.js");
 const appointmentRoute = require("./routes/appointment.js");
+const notificationRoute = require("./routes/notificationRoutes.js");
 const errorHandler = require("./middleware/error.middleware.js");
 const rateLimit = require("express-rate-limit");
 
@@ -33,7 +34,7 @@ app.use(
     origin: [
       "http://localhost:5173",
       "https://mern-stack-auth-drab.vercel.app",
-      "https://hostpital-managment.vercel.app"
+      "https://hostpital-managment.vercel.app",
     ],
     credentials: true,
   })
@@ -45,6 +46,7 @@ app.use(express.json());
 app.use("/api/auth", authLimiter, require("./routes/users.js"));
 app.use("/api/doctor", doctorRoute);
 app.use("/api/appointments", appointmentRoute);
+app.use("/api/notifications", notificationRoute);
 
 app.get("/", (req, res) => {
   res.send("API is running1 🚀");
@@ -66,7 +68,7 @@ const io = new Server(server, {
 
 // Initialize all sockets
 initSockets(io);
-
+app.set("io", io);
 // Start server
 const startServer = async () => {
   try {

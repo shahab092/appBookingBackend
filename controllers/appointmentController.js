@@ -3,20 +3,39 @@ const User = require("../models/User");
 const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
+const { createNotification } = require("../utils/notificationUtils");
 
 // ================= BOOK APPOINTMENT =================
 const bookAppointment = asyncHandler(async (req, res) => {
-  const { patientId, doctorId, date, timeSlot, reason, department, appointmentType } = req.body;
+  const {
+    patientId,
+    doctorId,
+    date,
+    timeSlot,
+    reason,
+    department,
+    appointmentType,
+  } = req.body;
 
   // Validate required fields
-  if (!patientId || !doctorId || !date || !timeSlot || !department || !appointmentType) {
+  if (
+    !patientId ||
+    !doctorId ||
+    !date ||
+    !timeSlot ||
+    !department ||
+    !appointmentType
+  ) {
     throw new ApiError(400, "Missing required fields");
   }
 
   // Validate appointmentType
   const validTypes = ["online", "inclinic"];
   if (!validTypes.includes(appointmentType)) {
-    throw new ApiError(400, `Invalid appointmentType. Valid types: ${validTypes.join(", ")}`);
+    throw new ApiError(
+      400,
+      `Invalid appointmentType. Valid types: ${validTypes.join(", ")}`
+    );
   }
 
   // Validate doctor & patient
@@ -31,7 +50,8 @@ const bookAppointment = asyncHandler(async (req, res) => {
   }
 
   // Get department from doctor if not provided
-  const appointmentDepartment = department || doctor.doctorProfile.specialization;
+  const appointmentDepartment =
+    department || doctor.doctorProfile.specialization;
 
   // Create appointment
   const appointment = await Appointment.create({
@@ -43,10 +63,21 @@ const bookAppointment = asyncHandler(async (req, res) => {
     date,
     timeSlot,
     reason: reason || "General consultation",
-    appointmentType // <-- new field
+    appointmentType, // <-- new field
   });
 
-  res.status(201).json(new ApiResponse(true, "Appointment booked successfully", appointment));
+  const io = req.app.get("io");
+  await createNotification(io, doctorId, {
+    title: "New Appointment",
+    message: `New ${appointmentType} appointment booked by ${
+      patient.fullName || patient.firstName
+    } on ${date} at ${timeSlot}`,
+    type: "info",
+    link: `/doctor/dashboard`,
+  });
+  res
+    .status(201)
+    .json(new ApiResponse(201, appointment, "Appointment booked successfully"));
 });
 
 // ================= GET PATIENT APPOINTMENTS =================
@@ -58,7 +89,7 @@ const getPatientAppointments = asyncHandler(async (req, res) => {
   const patientExists = await User.exists({
     _id: patientId,
     role: "patient",
-    isActive: true
+    isActive: true,
   });
   if (!patientExists) throw new ApiError(404, "Patient not found");
 
@@ -68,34 +99,36 @@ const getPatientAppointments = asyncHandler(async (req, res) => {
   if (date) filter.date = date;
   if (appointmentType) filter.appointmentType = appointmentType;
 
-  if (upcomingOnly === 'true') {
-    const today = new Date().toISOString().split('T')[0];
+  if (upcomingOnly === "true") {
+    const today = new Date().toISOString().split("T")[0];
     filter.date = { $gte: today };
     filter.status = { $in: ["booked"] };
   }
-  if (pastOnly === 'true') {
-    const today = new Date().toISOString().split('T')[0];
+  if (pastOnly === "true") {
+    const today = new Date().toISOString().split("T")[0];
     filter.date = { $lt: today };
   }
 
   const appointments = await Appointment.find(filter)
     .populate({
       path: "doctorId",
-      select: "firstName lastName email phoneNumber profilePicture doctorProfile role",
+      select:
+        "firstName lastName email phoneNumber profilePicture doctorProfile role",
       match: {
         role: "doctor",
         isActive: true,
-        status: { $in: ["active", "approved"] }
-      }
+        status: { $in: ["active", "approved"] },
+      },
     })
     .sort({ date: 1, timeSlot: 1 });
 
-  const validAppointments = appointments.filter(app => app.doctorId !== null);
+  const validAppointments = appointments.filter((app) => app.doctorId !== null);
 
-  const patient = await User.findById(patientId)
-    .select("firstName lastName email phoneNumber profilePicture");
+  const patient = await User.findById(patientId).select(
+    "firstName lastName email phoneNumber profilePicture"
+  );
 
-  const appointmentsWithDetails = validAppointments.map(appointment => {
+  const appointmentsWithDetails = validAppointments.map((appointment) => {
     const appointmentObj = appointment.toObject();
     if (patient) {
       appointmentObj.patientInfo = {
@@ -105,13 +138,19 @@ const getPatientAppointments = asyncHandler(async (req, res) => {
         fullName: patient.fullName,
         email: patient.email,
         phoneNumber: patient.phoneNumber,
-        profilePicture: patient.profilePicture
+        profilePicture: patient.profilePicture,
       };
     }
     return appointmentObj;
   });
 
-  res.json(new ApiResponse(200, appointmentsWithDetails, "Patient appointments fetched"));
+  res.json(
+    new ApiResponse(
+      200,
+      appointmentsWithDetails,
+      "Patient appointments fetched"
+    )
+  );
 });
 
 // ================= GET DOCTOR APPOINTMENTS =================
@@ -119,7 +158,11 @@ const getDoctorAppointments = asyncHandler(async (req, res) => {
   const { doctorId } = req.params;
   const { status, date, appointmentType } = req.query;
 
-  const doctor = await User.findOne({ _id: doctorId, role: "doctor", isActive: true });
+  const doctor = await User.findOne({
+    _id: doctorId,
+    role: "doctor",
+    isActive: true,
+  });
   if (!doctor) throw new ApiError(404, "Doctor not found or inactive");
 
   const filter = { doctorId, isDeleted: false };
@@ -130,7 +173,8 @@ const getDoctorAppointments = asyncHandler(async (req, res) => {
   const appointments = await Appointment.find(filter)
     .populate({
       path: "patientId",
-      select: "firstName lastName email phoneNumber profilePicture patientProfile"
+      select:
+        "firstName lastName email phoneNumber profilePicture patientProfile",
     })
     .sort({ date: 1, timeSlot: 1 });
 
@@ -144,10 +188,16 @@ const updateAppointmentStatus = asyncHandler(async (req, res) => {
 
   const validStatuses = ["booked", "completed", "cancelled"];
   if (!validStatuses.includes(status)) {
-    throw new ApiError(400, `Invalid status. Valid statuses: ${validStatuses.join(", ")}`);
+    throw new ApiError(
+      400,
+      `Invalid status. Valid statuses: ${validStatuses.join(", ")}`
+    );
   }
 
-  const appointment = await Appointment.findOne({ _id: appointmentId, isDeleted: false });
+  const appointment = await Appointment.findOne({
+    _id: appointmentId,
+    isDeleted: false,
+  });
   if (!appointment) throw new ApiError(404, "Appointment not found");
 
   appointment.status = status;
@@ -158,13 +208,20 @@ const updateAppointmentStatus = asyncHandler(async (req, res) => {
   }
 
   await appointment.save();
+  const io = req.app.get("io");
+  await createNotification(io, appointment.patientId, {
+    title: `Appointment ${status.charAt(0).toUpperCase() + status.slice(1)}`,
+    message: `Your appointment on ${appointment.date} at ${appointment.timeSlot} has been ${status}`,
+    type: status === "cancelled" ? "warning" : "success",
+    link: `/patient/dashboard`,
+  });
 
-  res.json(new ApiResponse(true, "Appointment status updated", appointment));
+  res.json(new ApiResponse(200, appointment, "Appointment status updated"));
 });
 
 module.exports = {
   bookAppointment,
   getPatientAppointments,
   getDoctorAppointments,
-  updateAppointmentStatus
+  updateAppointmentStatus,
 };
