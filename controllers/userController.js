@@ -3,7 +3,7 @@ const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const asyncHandler = require("../utils/asyncHandler");
-const { ApiError } = require("../utils/ApiError");
+const ApiError = require("../utils/ApiError");
 const ApiResponse = require('../utils/ApiResponse');
 
 

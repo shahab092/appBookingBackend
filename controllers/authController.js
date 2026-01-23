@@ -5,7 +5,7 @@ const { OAuth2Client } = require("google-auth-library");
 const User = require("../models/User");
 const Otp = require("../models/Otp");
 const asyncHandler = require("../utils/asyncHandler");
-const { ApiError } = require("../utils/ApiError");
+const ApiError = require("../utils/ApiError");
 const ApiResponse = require('../utils/ApiResponse');
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
