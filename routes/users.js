@@ -3,6 +3,7 @@ const router = express.Router();
 
 const {
   register,
+  verifyOtp,
   login,
   refreshAccessToken,
   logoutUser,
@@ -12,6 +13,7 @@ const {
 
 // Routes
 router.post("/register", register);
+router.post('/verify-otp', verifyOtp);
 router.post("/login", login);
 router.post("/refresh-token", refreshAccessToken);
 // router.post("/logout", verifyJWT, logoutUser);
