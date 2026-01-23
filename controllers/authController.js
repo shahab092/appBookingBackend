@@ -3,6 +3,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { OAuth2Client } = require("google-auth-library");
 const User = require("../models/User");
+const Otp = require("../models/Otp");
 const asyncHandler = require("../utils/asyncHandler");
 const { ApiError } = require("../utils/ApiError");
 const ApiResponse = require('../utils/ApiResponse');
@@ -14,10 +15,8 @@ const generateAccessToken = (user) => {
   return jwt.sign(
     {
       id: user._id,
-      name: user.name,
-      email: user.email,
-      avatar: user.avatar || null,
-      provider: user.provider,
+      whatsappnumber: user.whatsappnumber,
+      role: user.role,
     },
     process.env.ACCESS_TOKEN_SECRET,
     { expiresIn: process.env.ACCESS_TOKEN_EXPIRY || "15m" }
@@ -35,122 +34,116 @@ const generateRefreshToken = (user) => {
 
 // Register User
 const register = asyncHandler(async (req, res) => {
-  const { name, email, password } = req.body;
-  if (!name || !email || !password) throw new ApiError(400, "All fields are required");
+  const { whatsappnumber, password, role } = req.body;
 
-  const existingUser = await User.findOne({ email });
+  if (!whatsappnumber || !password) throw new ApiError(400, "WhatsApp number and password are required");
+
+  const existingUser = await User.findOne({ whatsappnumber });
   if (existingUser) throw new ApiError(400, "User already exists");
 
   const hashedPassword = await bcrypt.hash(password, 10);
 
   const user = await User.create({
-    name,
-    email,
+    whatsappnumber,
     password: hashedPassword,
-    provider: "local",
+    role: role || 'patient' // Default to patient if not provided
   });
 
-  const accessToken = generateAccessToken(user);
-  const refreshToken = generateRefreshToken(user);
+  // Generate 6-digit OTP
+  const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
-  user.refreshToken = refreshToken;
-  await user.save();
+  await Otp.create({
+    userId: user._id,
+    otp: otpCode,
+    expiresAt
+  });
+
+  const responseData = {
+    userId: user._id,
+    whatsappnumber: user.whatsappnumber,
+    role: user.role
+  };
+
+  // Return OTP in DEV mode
+  if (process.env.NODE_ENV !== 'production') {
+    responseData.otp = otpCode;
+    responseData.expiresAt = expiresAt;
+  }
 
   res.status(201).json(
-    new ApiResponse(201, { user, accessToken }, "User registered successfully")
+    new ApiResponse(201, responseData, "User registered successfully. Please verify OTP.")
+  );
+});
+
+// Verify OTP
+const verifyOtp = asyncHandler(async (req, res) => {
+  const { userId, otp } = req.body;
+
+  if (!userId || !otp) throw new ApiError(400, "User ID and OTP are required");
+
+  const otpRecord = await Otp.findOne({ userId, otp });
+
+  if (!otpRecord) {
+    throw new ApiError(400, "Invalid or expired OTP");
+  }
+
+  // Check expiration (though TTL should handle it, explicit check is safer)
+  if (otpRecord.expiresAt < new Date()) {
+    await Otp.deleteOne({ _id: otpRecord._id });
+    throw new ApiError(400, "OTP has expired");
+  }
+
+  // Mark user as verified
+  await User.findByIdAndUpdate(userId, { isVerified: true });
+
+  // Delete OTP record after successful verification
+  await Otp.deleteOne({ _id: otpRecord._id });
+
+  res.status(200).json(
+    new ApiResponse(200, {}, "OTP verified successfully. User is now verified.")
   );
 });
 
 // Login User
 const login = asyncHandler(async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) throw new ApiError(400, "Email and password are required");
+  const { whatsappnumber, password } = req.body;
+  if (!whatsappnumber || !password) throw new ApiError(400, "WhatsApp number and password are required");
 
-  const user = await User.findOne({ email }).select("+password");
+  const user = await User.findOne({ whatsappnumber }).select("+password");
   if (!user) throw new ApiError(401, "Invalid credentials");
 
   const isMatch = await bcrypt.compare(password, user.password);
   if (!isMatch) throw new ApiError(401, "Invalid credentials");
 
-  const accessToken = generateAccessToken(user);
-  const refreshToken = generateRefreshToken(user);
+  // If user is a doctor, we might want to check their status in the Docters collection
+  if (user.role === 'doctor') {
+    const Doctor = require('../models/Docters');
+    const doctorRecord = await Doctor.findOne({ userId: user._id });
 
-  user.refreshToken = refreshToken;
+    if (doctorRecord) {
+      // Attach doctor status to the response if needed, or block login if strictly required
+      // For now, we'll just return it so frontend can decide
+      user._doc.doctorStatus = doctorRecord.status;
+
+      if (doctorRecord.status === 'pending' || doctorRecord.status === 'rejected' || doctorRecord.status === 'suspended') {
+        // Optional: throw new ApiError(403, "Doctor account is " + doctorRecord.status);
+        // User asked "register should be pendding", implying they might not be able to do much yet.
+      }
+    }
+  }
+
+
   await user.save();
 
   res.status(200).json(
-    new ApiResponse(200, { user, accessToken }, "Login successful")
+    new ApiResponse(200, { user }, "Login successful")
   );
 });
 
-// Google Login
+// Google Login REMOVED/COMMENTED OUT
 const googleLogin = asyncHandler(async (req, res) => {
-  const { tokenId } = req.body;
-  if (!tokenId) throw new ApiError(400, "Google token ID is required");
-
-  const ticket = await client.verifyIdToken({
-    idToken: tokenId,
-    audience: process.env.GOOGLE_CLIENT_ID,
-  });
-
-  const payload = ticket.getPayload();
-
-  console.log("GOOGLE PAYLOAD:", payload);
-
-  const email = payload?.email;
-  const googleId = payload?.sub;
-  const picture = payload?.picture;
-  const fullName = payload?.name;
-
-  if (!email) {
-    throw new ApiError(400, "Google account has no email");
-  }
-
-  // ✅ FORCE SAFE VALUES
-  let firstName = "Google";
-  let lastName = "User";
-
-  if (typeof fullName === "string" && fullName.trim()) {
-    const parts = fullName.trim().split(/\s+/);
-    firstName = parts[0] || "Google";
-    lastName = parts.slice(1).join(" ") || "User";
-  }
-
-  console.log("FINAL NAME VALUES:", { firstName, lastName });
-
-  let user = await User.findOne({ email }).select("+refreshToken");
-
-  if (!user) {
-    user = await User.create({
-      email,
-      firstName,
-      lastName,
-      googleId,
-      provider: "google",
-      profilePicture: picture,
-      emailVerified: true,
-      role: "patient",
-    });
-  } else {
-    user.googleId = user.googleId || googleId;
-    user.provider = "google";
-    user.emailVerified = true;
-    if (!user.profilePicture && picture) {
-      user.profilePicture = picture;
-    }
-    await user.save();
-  }
-
-  const accessToken = generateAccessToken(user);
-  const refreshToken = generateRefreshToken(user);
-
-  user.refreshToken = refreshToken;
-  user.lastLogin = new Date();
-  await user.save();
-
-  res.status(200).json(
-    new ApiResponse(200, { user, accessToken }, "Google login successful")
-  );
+  throw new ApiError(400, "Google login not supported in this version");
 });
 
 
@@ -190,6 +183,7 @@ const logoutUser = asyncHandler(async (req, res) => {
 
 module.exports = {
   register,
+  verifyOtp,
   login, googleLogin,
   refreshAccessToken,
   logoutUser,

@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
-const { googleLogin } = require('../controllers/authController');
+// const { googleLogin } = require('../controllers/authController');
+const { register, login, verifyOtp } = require('../controllers/authController'); // Importing correct auth methods
 const User = require('../models/User');
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -44,7 +45,12 @@ const protect = async (req, res, next) => {
 };
 
 // 1. Google Login - ONLY FOR PATIENTS
-router.route("/google-login").post(googleLogin);
+// router.route("/google-login").post(googleLogin);
+
+// Standard Login/Register
+router.post('/register', register);
+router.post('/verify-otp', verifyOtp);
+router.post('/login', login);
 
 // 2. Get patient profile (protected)
 router.get('/profile', protect, isPatient, async (req, res) => {
@@ -58,9 +64,9 @@ router.get('/profile', protect, isPatient, async (req, res) => {
       user
     });
   } catch (error) {
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'Server error' 
+      message: 'Server error'
     });
   }
 });
@@ -87,9 +93,9 @@ router.put('/profile', protect, isPatient, async (req, res) => {
       user: updatedUser
     });
   } catch (error) {
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'Update failed' 
+      message: 'Update failed'
     });
   }
 });
