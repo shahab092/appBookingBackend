@@ -38,41 +38,48 @@ const register = asyncHandler(async (req, res) => {
 
   if (!whatsappnumber || !password) throw new ApiError(400, "WhatsApp number and password are required");
 
-  const existingUser = await User.findOne({ whatsappnumber });
-  if (existingUser) throw new ApiError(400, "User already exists");
+  let user = await User.findOne({ whatsappnumber });
 
-  const hashedPassword = await bcrypt.hash(password, 10);
+  if (user) {
+    if (user.isVerified) {
+      throw new ApiError(400, "User already exists and is verified");
+    }
 
-  const user = await User.create({
-    whatsappnumber,
-    password: hashedPassword,
-    role: role || 'patient' // Default to patient if not provided
-  });
+    // If user exists but is not verified, we'll update the password and resend OTP
+    const hashedPassword = await bcrypt.hash(password, 10);
+    user.password = hashedPassword;
+    user.role = role || user.role;
+    await user.save();
+  } else {
+    const hashedPassword = await bcrypt.hash(password, 10);
+    user = await User.create({
+      whatsappnumber,
+      password: hashedPassword,
+      role: role
+    });
+  }
 
   // Generate 6-digit OTP
   const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
-  await Otp.create({
-    userId: user._id,
-    otp: otpCode,
-    expiresAt
-  });
+  // Handle OTP record (upsert)
+  await Otp.findOneAndUpdate(
+    { userId: user._id },
+    { otp: otpCode, expiresAt },
+    { upsert: true, new: true }
+  );
 
   const responseData = {
     userId: user._id,
     whatsappnumber: user.whatsappnumber,
-    role: user.role
+    role: user.role,
+    otp: otpCode,
+    expiresAt: expiresAt
   };
 
-  // Return OTP in DEV mode
-  responseData.otp = otpCode;
-  responseData.expiresAt = expiresAt;
-  // if (process.env.NODE_ENV !== 'production') {
-  // }
-
-  res.status(201).json(
-    new ApiResponse(201, responseData, "User registered successfully. Please verify OTP.")
+  res.status(user.isNew ? 201 : 200).json(
+    new ApiResponse(201, responseData, user.isNew ? "User registered successfully. Please verify OTP." : "New OTP sent. Please verify.")
   );
 });
 
