@@ -116,29 +116,40 @@ const login = asyncHandler(async (req, res) => {
   const isMatch = await bcrypt.compare(password, user.password);
   if (!isMatch) throw new ApiError(401, "Invalid credentials");
 
+  // Check if user is verified
+  if (!user.isVerified) {
+    throw new ApiError(401, "Account not verified. Please verify your OTP first.");
+  }
+
   // If user is a doctor, we might want to check their status in the Docters collection
   if (user.role === 'doctor') {
     const Doctor = require('../models/Docters');
     const doctorRecord = await Doctor.findOne({ userId: user._id });
 
     if (doctorRecord) {
-      // Attach doctor status to the response if needed, or block login if strictly required
-      // For now, we'll just return it so frontend can decide
       user._doc.doctorStatus = doctorRecord.status;
-
-      if (doctorRecord.status === 'pending' || doctorRecord.status === 'rejected' || doctorRecord.status === 'suspended') {
-        // Optional: throw new ApiError(403, "Doctor account is " + doctorRecord.status);
-        // User asked "register should be pendding", implying they might not be able to do much yet.
-      }
     }
   }
 
+  // Generate tokens
+  const accessToken = generateAccessToken(user);
+  const refreshToken = generateRefreshToken(user);
 
+  // Save refresh token to user
+  user.refreshToken = refreshToken;
   await user.save();
 
-  res.status(200).json(
-    new ApiResponse(200, { user }, "Login successful")
-  );
+  const options = {
+    httpOnly: true,
+    secure: true, // Recommended to keep true, or use process.env.NODE_ENV === 'production'
+    sameSite: "lax",
+  };
+
+  res.status(200)
+    .cookie("refreshToken", refreshToken, options)
+    .json(
+      new ApiResponse(200, { user, accessToken }, "Login successful")
+    );
 });
 
 // Google Login REMOVED/COMMENTED OUT

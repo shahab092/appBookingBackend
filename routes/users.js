@@ -4,7 +4,7 @@ const router = express.Router();
 const {
   register,
   login,
-  refreshToken,
+  refreshAccessToken,
   logoutUser,
 } = require("../controllers/authController");
 
@@ -13,7 +13,7 @@ const {
 // Routes
 router.post("/register", register);
 router.post("/login", login);
-router.post("/refresh-token", refreshToken);
+router.post("/refresh-token", refreshAccessToken);
 // router.post("/logout", verifyJWT, logoutUser);
 
 module.exports = router;
