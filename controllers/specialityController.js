@@ -17,8 +17,8 @@ const seedSpecialities = asyncHandler(async (req, res) => {
     const createdSpecialities = await Speciality.insertMany(specialitiesData);
 
     res
-        .status(201)
-        .json(new ApiResponse(201, createdSpecialities, "Specialities seeded successfully"));
+        .status(200)
+        .json(new ApiResponse(200, createdSpecialities, "Specialities seeded successfully"));
 });
 
 // ================= GET ALL SPECIALITIES =================
