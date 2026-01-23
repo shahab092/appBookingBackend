@@ -66,10 +66,10 @@ const register = asyncHandler(async (req, res) => {
   };
 
   // Return OTP in DEV mode
-  if (process.env.NODE_ENV !== 'production') {
-    responseData.otp = otpCode;
-    responseData.expiresAt = expiresAt;
-  }
+  responseData.otp = otpCode;
+  responseData.expiresAt = expiresAt;
+  // if (process.env.NODE_ENV !== 'production') {
+  // }
 
   res.status(201).json(
     new ApiResponse(201, responseData, "User registered successfully. Please verify OTP.")
