@@ -142,20 +142,30 @@ const login = asyncHandler(async (req, res) => {
   const accessToken = generateAccessToken(user);
   const refreshToken = generateRefreshToken(user);
 
-  // Save refresh token to user
+  // Save refresh token to user (this updates the document, but we'll clean the response object)
   user.refreshToken = refreshToken;
   await user.save();
 
+  // Create a clean user object for the response
+  const loggedInUser = {
+    _id: user._id,
+    whatsappnumber: user.whatsappnumber,
+    role: user.role,
+    isVerified: user.isVerified,
+    status: user.status,
+    doctorStatus: user._doc.doctorStatus, // Include doctor status if available
+  };
+
   const options = {
     httpOnly: true,
-    secure: true, // Recommended to keep true, or use process.env.NODE_ENV === 'production'
+    secure: true,
     sameSite: "lax",
   };
 
   res.status(200)
     .cookie("refreshToken", refreshToken, options)
     .json(
-      new ApiResponse(200, { user, accessToken }, "Login successful")
+      new ApiResponse(200, { user: loggedInUser, accessToken }, "Login successful")
     );
 });
 
