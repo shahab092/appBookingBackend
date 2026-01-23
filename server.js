@@ -9,6 +9,7 @@ const connectDB = require("./config/database");
 const doctorRoute = require("./routes/doctor.js");
 const appointmentRoute = require("./routes/appointment.js");
 const notificationRoute = require("./routes/notificationRoutes.js");
+const specialityRoute = require("./routes/specialityRoutes.js");
 const errorHandler = require("./middleware/error.middleware.js");
 const rateLimit = require("express-rate-limit");
 const { initSockets } = require("./sockets");
@@ -46,6 +47,7 @@ app.use("/api/auth", authLimiter, require("./routes/users.js"));
 app.use("/api/doctor", doctorRoute);
 app.use("/api/appointments", appointmentRoute);
 app.use("/api/notifications", notificationRoute);
+app.use("/api/specialities", specialityRoute);
 
 // Test route
 app.get("/", (req, res) => {
