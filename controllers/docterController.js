@@ -534,6 +534,86 @@ const getDoctors = async (req, res, next) => {
   }
 };
 
+// Admin-only: Create single doctor account + profile
+const createDoctorByAdmin = asyncHandler(async (req, res) => {
+  const { whatsappnumber, password, name, email, emergencyContact, address, pmdcRegistrationNumber, specialityId, superSpeciality, consultationTime, locations, availability, education, experience, image, status } = req.body;
+
+  if (!whatsappnumber || !password || !name || !email || !pmdcRegistrationNumber) {
+    throw new ApiError(400, "WhatsApp number, password, name, email, and PMDC number are required");
+  }
+
+  const existingUser = await User.findOne({ whatsappnumber });
+  if (existingUser) throw new ApiError(400, "User with this WhatsApp number already exists");
+
+  const existingDoctor = await Doctor.findOne({ email });
+  if (existingDoctor) throw new ApiError(400, "Doctor with this email already exists");
+
+  if (specialityId) {
+    const specialityExists = await Speciality.findById(specialityId);
+    if (!specialityExists) throw new ApiError(400, "Invalid speciality ID");
+
+    if (superSpeciality) {
+      const validSuperSpeciality = specialityExists.super_specialities.find(ss => ss.name.toLowerCase() === superSpeciality.toLowerCase());
+      if (!validSuperSpeciality) throw new ApiError(400, `Invalid super speciality for ${specialityExists.speciality}`);
+    }
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  const newUser = await User.create({ whatsappnumber, password: hashedPassword, role: "doctor", isVerified: true });
+
+  const newDoctor = await Doctor.create({
+    userId: newUser._id, name, email, phone: emergencyContact || whatsappnumber, address, pmdcRegistrationNumber,
+    speciality: specialityId, superSpeciality, consultationTime: consultationTime || 15,
+    locations: locations || [], availability: availability || [], education: education || [],
+    experience: experience || 0, image, status: status || 'approved'
+  });
+
+  res.status(201).json(new ApiResponse(201, { userId: newUser._id, doctorId: newDoctor._id, name: newDoctor.name, email: newDoctor.email, status: newDoctor.status }, "Doctor account created successfully"));
+});
+
+// Admin-only: Bulk create doctors (accepts array)
+const bulkCreateDoctors = asyncHandler(async (req, res) => {
+  const doctors = req.body;
+
+  if (!Array.isArray(doctors) || doctors.length === 0) {
+    throw new ApiError(400, "Please provide an array of doctor objects");
+  }
+
+  const results = { success: [], failed: [] };
+
+  for (let i = 0; i < doctors.length; i++) {
+    const doctor = doctors[i];
+    try {
+      const { whatsappnumber, password, name, email, emergencyContact, address, pmdcRegistrationNumber, specialityId, superSpeciality, consultationTime, locations, availability, education, experience, image, status } = doctor;
+
+      if (!whatsappnumber || !password || !name || !email || !pmdcRegistrationNumber) throw new Error("Missing required fields");
+
+      const existingUser = await User.findOne({ whatsappnumber });
+      if (existingUser) throw new Error("WhatsApp number already exists");
+
+      const existingDoctor = await Doctor.findOne({ email });
+      if (existingDoctor) throw new Error("Email already exists");
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const newUser = await User.create({ whatsappnumber, password: hashedPassword, role: "doctor", isVerified: true });
+
+      const newDoctor = await Doctor.create({
+        userId: newUser._id, name, email, phone: emergencyContact || whatsappnumber, address, pmdcRegistrationNumber,
+        speciality: specialityId, superSpeciality, consultationTime: consultationTime || 15,
+        locations: locations || [], availability: availability || [], education: education || [],
+        experience: experience || 0, image, status: status || 'approved'
+      });
+
+      results.success.push({ index: i, userId: newUser._id, doctorId: newDoctor._id, name: newDoctor.name, email: newDoctor.email });
+    } catch (error) {
+      results.failed.push({ index: i, email: doctor.email, error: error.message });
+    }
+  }
+
+  res.status(201).json(new ApiResponse(201, results, `Created ${results.success.length} doctors, ${results.failed.length} failed`));
+});
+
 module.exports = {
   updateStatus,
   getDoctors,
@@ -541,5 +621,7 @@ module.exports = {
   getAvailableSlots,
   addLeave,
   removeLeave,
-  suggestSpeciality
+  suggestSpeciality,
+  createDoctorByAdmin,
+  bulkCreateDoctors
 };

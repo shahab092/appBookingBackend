@@ -7,12 +7,20 @@ const {
     getAvailableSlots,
     addLeave,
     removeLeave,
-    suggestSpeciality
+    suggestSpeciality,
+    createDoctorByAdmin,
+    bulkCreateDoctors
 } = require('../controllers/docterController');
 const authenticate = require('../middleware/auth');
 const isAdmin = require('../middleware/isAdmin');
 
 
+
+// POST /api/doctor/create-by-admin - Create doctor account and profile (Admin only)
+router.post('/create-by-admin', authenticate, isAdmin, createDoctorByAdmin);
+
+// POST /api/doctor/bulk-create - Bulk create doctors (Admin only)
+router.post('/bulk-create', authenticate, isAdmin, bulkCreateDoctors);
 
 // PUT /api/doctors/update-profile - Update doctor profile
 router.put('/update-profile', authenticate, updateDoctorProfile);
