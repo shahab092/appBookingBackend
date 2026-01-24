@@ -3,6 +3,7 @@ const router = express.Router();
 const {
     updateStatus,
     getDoctors,
+    getDoctorById,
     updateDoctorProfile,
     getAvailableSlots,
     addLeave,
@@ -27,6 +28,9 @@ router.put('/update-profile', authenticate, updateDoctorProfile);
 
 // GET /api/doctors/available-slots - Get available slots for a doctor/date
 router.get('/available-slots', getAvailableSlots);
+
+// GET /api/doctors/:id - Get single doctor by ID
+router.get('/:id', getDoctorById);
 
 // GET /api/doctors - Get all doctors
 router.get('/', getDoctors);

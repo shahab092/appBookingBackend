@@ -491,17 +491,17 @@ const getDoctors = async (req, res, next) => {
 
       return {
         doctorId: docObj._id,
-        userId: docObj.userId?._id || docObj.userId,
+        userId: docObj.userId?._id,
         whatsappnumber: docObj.userId?.whatsappnumber,
         role: docObj.userId?.role,
         name: docObj.name,
         email: docObj.email,
-        emergencyContact: docObj.phone, // Renamed from phone
+        emergencyContact: docObj.phone,
         address: docObj.address,
         speciality: docObj.speciality?.speciality || null,
         specialityId: docObj.speciality?._id || null,
         superSpeciality: docObj.superSpeciality,
-        services: services, // Services from the super-speciality
+        services: services,
         consultationTime: docObj.consultationTime,
         locations: docObj.locations?.map(loc => ({
           hospitalId: loc._id,
@@ -509,8 +509,19 @@ const getDoctors = async (req, res, next) => {
           phone: loc.phone,
           coordinates: loc.coordinates
         })) || [],
-        availability: docObj.availability,
-        education: docObj.education,
+        availability: docObj.availability?.map(avail => ({
+          day: avail.day,
+          startTime: avail.startTime,
+          endTime: avail.endTime,
+          appointmentType: avail.appointmentType,
+          locationId: avail.locationId
+        })) || [],
+        education: docObj.education?.map(edu => ({
+          degree: edu.degree,
+          institute: edu.institute,
+          startYear: edu.startYear,
+          endYear: edu.endYear
+        })) || [],
         isAvailable: docObj.isAvailable,
         pmdcRegistrationNumber: docObj.pmdcRegistrationNumber,
         status: docObj.status,
@@ -533,6 +544,77 @@ const getDoctors = async (req, res, next) => {
     next(error);
   }
 };
+
+// Get single doctor by ID
+const getDoctorById = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const doctor = await Doctor.findById(id)
+    .populate('userId', 'whatsappnumber role -_id')
+    .populate('speciality');
+
+  if (!doctor) {
+    throw new ApiError(404, "Doctor not found");
+  }
+
+  const docObj = doctor.toObject();
+
+  // Extract services from the matching super-speciality
+  let services = [];
+  if (docObj.speciality && docObj.superSpeciality) {
+    const matchingSuperSpec = docObj.speciality.super_specialities?.find(
+      ss => ss.name.toLowerCase() === docObj.superSpeciality.toLowerCase()
+    );
+    services = matchingSuperSpec?.services || [];
+  }
+
+  const transformedDoctor = {
+    doctorId: docObj._id,
+    userId: docObj.userId?._id,
+    whatsappnumber: docObj.userId?.whatsappnumber,
+    role: docObj.userId?.role,
+    name: docObj.name,
+    email: docObj.email,
+    emergencyContact: docObj.phone,
+    address: docObj.address,
+    speciality: docObj.speciality?.speciality || null,
+    specialityId: docObj.speciality?._id || null,
+    superSpeciality: docObj.superSpeciality,
+    services: services,
+    consultationTime: docObj.consultationTime,
+    locations: docObj.locations?.map(loc => ({
+      hospitalId: loc._id,
+      name: loc.name,
+      phone: loc.phone,
+      coordinates: loc.coordinates
+    })) || [],
+    availability: docObj.availability?.map(avail => ({
+      day: avail.day,
+      startTime: avail.startTime,
+      endTime: avail.endTime,
+      appointmentType: avail.appointmentType,
+      locationId: avail.locationId
+    })) || [],
+    education: docObj.education?.map(edu => ({
+      degree: edu.degree,
+      institute: edu.institute,
+      startYear: edu.startYear,
+      endYear: edu.endYear
+    })) || [],
+    isAvailable: docObj.isAvailable,
+    pmdcRegistrationNumber: docObj.pmdcRegistrationNumber,
+    status: docObj.status,
+    image: docObj.image,
+    experience: docObj.experience,
+    averageRating: docObj.averageRating,
+    numReviews: docObj.numReviews,
+    leaves: docObj.leaves,
+    completenessScore: docObj.completenessScore,
+    registrationDate: docObj.registrationDate,
+  };
+
+  res.status(200).json(new ApiResponse(200, transformedDoctor, "Doctor details fetched successfully"));
+});
 
 // Admin-only: Create single doctor account + profile
 const createDoctorByAdmin = asyncHandler(async (req, res) => {
@@ -617,6 +699,7 @@ const bulkCreateDoctors = asyncHandler(async (req, res) => {
 module.exports = {
   updateStatus,
   getDoctors,
+  getDoctorById,
   updateDoctorProfile,
   getAvailableSlots,
   addLeave,
