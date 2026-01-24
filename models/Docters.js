@@ -10,13 +10,14 @@ const doctorSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    specialization: {
-        type: String,
-        required: false // changed to optional
+    speciality: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Speciality',
+        required: false
     },
-    department: {
+    superSpeciality: {
         type: String,
-        required: false // new department field
+        required: false
     },
     email: {
         type: String,
@@ -27,42 +28,93 @@ const doctorSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    consultationTime: {
+        type: Number,
+        default: 15, // Default 15 minutes
+    },
+    locations: [
+        {
+            name: { type: String, required: true },
+            address: { type: String, required: false },
+            coordinates: {
+                lat: Number,
+                lng: Number
+            }
+        }
+    ],
+    availability: [
+        {
+            day: {
+                type: String,
+                enum: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+                required: true
+            },
+            startTime: { type: String, required: true }, // HH:mm
+            endTime: { type: String, required: true },   // HH:mm
+            locationId: { type: mongoose.Schema.Types.ObjectId }, // References a location in the locations array
+            appointmentType: {
+                type: String,
+                enum: ['online', 'inclinic'],
+                default: 'inclinic'
+            }
+        }
+    ],
     registrationDate: {
         type: Date,
         default: Date.now
     },
+    education: [
+        {
+            degree: { type: String, required: true },
+            institute: { type: String, required: true },
+            year: { type: String, required: true }
+        }
+    ],
     isAvailable: {
         type: Boolean,
-        default: true // new field for availability
-    },
-    address: {
-        type: String,
-        required: false // new optional field
+        default: true
     },
     pmdcRegistrationNumber: {
         type: String,
-        required: true // new required field
+        required: true
     },
     status: {
         type: String,
-        enum: ['pending', 'inprogress', 'approved', 'away', 'in clinic'], // added inprogress
-        default: 'pending' // default value
+        enum: ['pending', 'inprogress', 'approved', 'away', 'in clinic', 'incomplete'],
+        default: 'pending'
     },
     deleted: {
         type: Boolean,
-        default: false // soft delete field
-    },
-    confirmationToken: {
-        type: String,
-        required: false
-    },
-    tokenExpiresAt: {
-        type: Date,
-        required: false
-    },
-    isConfirmed: {
-        type: Boolean,
         default: false
+    },
+    image: {
+        type: String, // URL to the image
+        required: false
+    },
+    experience: {
+        type: Number, // Years of experience
+        default: 0
+    },
+    averageRating: {
+        type: Number,
+        default: 0,
+        min: 0,
+        max: 5
+    },
+    numReviews: {
+        type: Number,
+        default: 0
+    },
+    leaves: [
+        {
+            type: Date // Dates when the doctor is not available
+        }
+    ],
+    completenessScore: {
+        type: Number,
+        default: 0,
+        min: 0,
+        max: 100
     }
 });
 

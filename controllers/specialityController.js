@@ -30,7 +30,39 @@ const getSpecialities = asyncHandler(async (req, res) => {
         .json(new ApiResponse(200, specialities, "Specialities fetched successfully"));
 });
 
+const SpecialitySuggestion = require("../models/SpecialitySuggestion");
+
+// ... existing code ...
+
+const getSpecialitySuggestions = asyncHandler(async (req, res) => {
+    const suggestions = await SpecialitySuggestion.find({}).populate('suggestedBy', 'name');
+    res.status(200).json(new ApiResponse(200, suggestions, "Suggestions fetched"));
+});
+
+const approveSpecialitySuggestion = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body; // 'approved' or 'rejected'
+
+    const suggestion = await SpecialitySuggestion.findById(id);
+    if (!suggestion) throw new ApiError(404, "Suggestion not found");
+
+    suggestion.status = status;
+    await suggestion.save();
+
+    if (status === 'approved') {
+        // Automatically create the speciality if it doesn't exist
+        const existing = await Speciality.findOne({ speciality: suggestion.name });
+        if (!existing) {
+            await Speciality.create({ speciality: suggestion.name });
+        }
+    }
+
+    res.status(200).json(new ApiResponse(200, suggestion, `Suggestion ${status}`));
+});
+
 module.exports = {
     seedSpecialities,
     getSpecialities,
+    getSpecialitySuggestions,
+    approveSpecialitySuggestion
 };
