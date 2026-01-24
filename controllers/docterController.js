@@ -29,7 +29,10 @@ const calculateCompleteness = (doctor) => {
   if (doctor.speciality) score += weights.speciality;
   if (doctor.locations?.length > 0) score += weights.locations;
   if (doctor.availability?.length > 0) score += weights.availability;
-  if (doctor.education?.length > 0) score += weights.education;
+  if (doctor.education?.length > 0) {
+    const hasValidEducation = doctor.education.every(edu => edu.degree && edu.institute && edu.startYear && edu.endYear);
+    if (hasValidEducation) score += weights.education;
+  }
   if (doctor.image) score += weights.image;
   if (doctor.experience > 0) score += weights.experience;
   if (doctor.pmdcRegistrationNumber) score += weights.pmdcRegistrationNumber;
@@ -88,88 +91,6 @@ transporter.verify(function (error, success) {
   }
 });
 
-const registerDoctor = async (req, res, next) => {
-  try {
-    const { firstName, lastName, whatsappnumber, email, phoneNumber, password, address, doctorProfile } = req.body;
-
-    // 1️⃣ Validate required fields
-    // WhatsApp number is now the primary auth identifier
-    if (!whatsappnumber || !password || !firstName || !lastName || !email) {
-      return res.status(400).json({
-        success: false,
-        message: "First name, last name, whatsapp number, email, and password are required",
-      });
-    }
-
-    // 1.5 Prevent doctor from registering another doctor if already logged in
-    if (req.user && req.user.role === 'doctor') {
-      return res.status(400).json({
-        success: false,
-        message: "You are already registered as a doctor",
-      });
-    }
-
-    // 2️⃣ Check if user (whatsapp) already exists
-    const existingUser = await User.findOne({ whatsappnumber });
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: "WhatsApp number already registered",
-      });
-    }
-
-    // Check if doctor email already exists in Doctor collection
-    const existingDoctorEmail = await Doctor.findOne({ email });
-    if (existingDoctorEmail) {
-      return res.status(400).json({
-        success: false,
-        message: "Email already registered for a doctor",
-      });
-    }
-
-    // ✅ 3️⃣ Hash the password before saving
-    const hashedPassword = await bcrypt.hash(password, 10);
-    console.log('🔐 Password hashed successfully');
-
-    // 4️⃣ Create User (Auth)
-    const newUser = await User.create({
-      whatsappnumber,
-      password: hashedPassword,
-      role: "doctor",
-    });
-
-    // 5️⃣ Create Doctor (Profile)
-    // Combine firstName + lastName for name, or keep separate? Model says 'name'.
-    const newDoctor = await Doctor.create({
-      userId: newUser._id,
-      name: `${firstName} ${lastName}`,
-      email,
-      phone: phoneNumber || whatsappnumber, // Fallback to whatsapp if phone not provided
-      address: address, // Assuming address is string or matches schema
-      specialization: doctorProfile?.specialization,
-      department: doctorProfile?.department,
-      pmdcRegistrationNumber: doctorProfile?.licenseNumber, // Mapping license to pmdc
-      status: "pending",
-      // Add other matching fields
-    });
-
-
-    // 6️⃣ Return success response
-    res.status(201).json({
-      success: true,
-      message: "Doctor registered successfully. Awaiting approval.",
-      data: {
-        userId: newUser._id,
-        doctorId: newDoctor._id,
-        name: newDoctor.name,
-        status: newDoctor.status,
-      },
-    });
-  } catch (error) {
-    console.error('❌ Doctor registration error:', error);
-    next(error);
-  }
-};
 
 // PATCH /api/doctors/:id/status
 // Note: :id should be the DOCTOR ID (from Doctor collection), or we infer from User ID.
@@ -277,46 +198,21 @@ async function updateStatus(req, res) {
   }
 }
 
-// GET /api/doctors/confirm?token=...
-async function confirmDoctor(req, res) {
-  // Re-implement if keeping the token flow, checking Doctor collection
-  // For now, simpler implementation valid for 'Docters' model
-  // Assuming 'inprogress' flow is preserved
-  try {
-    const { token } = req.query;
-    if (!token) return res.send('No token');
-
-    let decoded;
-    try {
-      decoded = jwt.verify(token, process.env.DOCTOR_CONFIRMATION_SECRET || 'secret');
-    } catch (e) { return res.send('Invalid token'); }
-
-    const doctor = await Doctor.findById(decoded.doctorId);
-    if (!doctor) return res.send('Doctor not found');
-
-    doctor.status = 'approved';
-    doctor.isConfirmed = true; // if existing in schema
-    await doctor.save();
-
-    return res.send('Account Confirmed! You can login.');
-  } catch (e) {
-    return res.send('Error confirming');
-  }
-}
 
 const updateDoctorProfile = asyncHandler(async (req, res) => {
   const {
     doctorId, // Optional for Admins
     name, // Support for creation/update
     email, // Support for creation/update
-    phone, // Support for creation/update
+    emergencyContact, // Support for creation/update
     pmdcRegistrationNumber, // Support for creation/update
     specialityId,
     superSpeciality,
     consultationTime,
     locations,
     availability,
-    education
+    education,
+    address
   } = req.body;
 
   let doctor;
@@ -334,7 +230,8 @@ const updateDoctorProfile = asyncHandler(async (req, res) => {
         userId: req.user._id,
         name,
         email,
-        phone: phone || req.user.whatsappnumber, // Fallback to whatsapp
+        phone: emergencyContact || req.user.whatsappnumber,
+        address,
         pmdcRegistrationNumber,
         status: "incomplete"
       });
@@ -350,8 +247,9 @@ const updateDoctorProfile = asyncHandler(async (req, res) => {
   // Update basic fields if provided
   if (name) doctor.name = name;
   if (email) doctor.email = email;
-  if (phone) doctor.phone = phone;
+  if (emergencyContact) doctor.phone = emergencyContact;
   if (pmdcRegistrationNumber) doctor.pmdcRegistrationNumber = pmdcRegistrationNumber;
+  if (address) doctor.address = address;
 
   if (specialityId) doctor.speciality = specialityId;
   if (superSpeciality) doctor.superSpeciality = superSpeciality;
@@ -511,13 +409,12 @@ const getAvailableSlots = asyncHandler(async (req, res) => {
     const slots = generateSlots(avail.startTime, avail.endTime, doctor.consultationTime || 15);
 
     let locationName = "N/A";
-    let locationAddress = "N/A";
-
+    let locationPhone = "N/A";
     if (avail.appointmentType === 'inclinic' && avail.locationId) {
       const location = doctor.locations.find(loc => loc._id.toString() === avail.locationId.toString());
       if (location) {
         locationName = location.name;
-        locationAddress = location.address;
+        locationPhone = location.phone || "N/A";
       }
     }
 
@@ -525,7 +422,7 @@ const getAvailableSlots = asyncHandler(async (req, res) => {
       time,
       appointmentType: avail.appointmentType,
       locationName: avail.appointmentType === 'online' ? "Online" : locationName,
-      locationAddress: avail.appointmentType === 'online' ? "N/A" : locationAddress,
+      locationPhone: avail.appointmentType === 'online' ? "N/A" : locationPhone,
       isBooked: bookedSlots.includes(time)
     }));
 

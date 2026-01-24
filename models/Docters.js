@@ -28,6 +28,10 @@ const doctorSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    address: {
+        type: String,
+        required: false
+    },
     consultationTime: {
         type: Number,
         default: 15, // Default 15 minutes
@@ -35,10 +39,10 @@ const doctorSchema = new mongoose.Schema({
     locations: [
         {
             name: { type: String, required: true },
-            address: { type: String, required: false },
+            phone: { type: String, required: false }, // Hospital/Clinic number
             coordinates: {
-                lat: Number,
-                lng: Number
+                lat: { type: Number, required: true },
+                lng: { type: Number, required: true }
             }
         }
     ],
@@ -67,7 +71,8 @@ const doctorSchema = new mongoose.Schema({
         {
             degree: { type: String, required: true },
             institute: { type: String, required: true },
-            year: { type: String, required: true }
+            startYear: { type: String, required: true },
+            endYear: { type: String, required: true }
         }
     ],
     isAvailable: {
