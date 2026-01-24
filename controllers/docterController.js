@@ -464,9 +464,7 @@ const getDoctors = async (req, res, next) => {
 };
 
 module.exports = {
-  registerDoctor,
   updateStatus,
-  confirmDoctor,
   getDoctors,
   updateDoctorProfile,
   getAvailableSlots,

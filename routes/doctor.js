@@ -1,9 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const {
-    registerDoctor,
     updateStatus,
-    confirmDoctor,
     getDoctors,
     updateDoctorProfile,
     getAvailableSlots,
@@ -13,8 +11,7 @@ const {
 } = require('../controllers/docterController');
 const authenticate = require('../middleware/auth');
 
-// POST /api/doctors - Create a new doctor
-router.post('/register', registerDoctor);
+
 
 // PUT /api/doctors/update-profile - Update doctor profile
 router.put('/update-profile', authenticate, updateDoctorProfile);
@@ -28,8 +25,7 @@ router.get('/', getDoctors);
 // PATCH /api/doctors/:id/status - Update doctor status
 router.patch('/:id/status', updateStatus);
 
-// GET /api/doctors/confirm - Confirm doctor registration via email token
-router.get('/confirm', confirmDoctor);
+
 
 // Leaves management
 router.post('/add-leave', authenticate, addLeave);
