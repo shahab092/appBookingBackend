@@ -10,6 +10,7 @@ const {
     suggestSpeciality
 } = require('../controllers/docterController');
 const authenticate = require('../middleware/auth');
+const isAdmin = require('../middleware/isAdmin');
 
 
 
@@ -22,8 +23,8 @@ router.get('/available-slots', getAvailableSlots);
 // GET /api/doctors - Get all doctors
 router.get('/', getDoctors);
 
-// PATCH /api/doctors/:id/status - Update doctor status
-router.patch('/:id/status', updateStatus);
+// PATCH /api/doctors/:id/status - Update doctor status (Admin only)
+router.patch('/:id/status', authenticate, isAdmin, updateStatus);
 
 
 

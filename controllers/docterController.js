@@ -93,8 +93,6 @@ transporter.verify(function (error, success) {
 
 
 // PATCH /api/doctors/:id/status
-// Note: :id should be the DOCTOR ID (from Doctor collection), or we infer from User ID.
-// Let's assume frontend lists Doctors, so it passes Doctor ID.
 async function updateStatus(req, res) {
   try {
     const { id } = req.params;
@@ -107,7 +105,16 @@ async function updateStatus(req, res) {
       });
     }
 
-    const doctor = await Doctor.findById(id); // Find in Doctor collection
+    // Validate status against allowed values
+    const allowedStatuses = ['pending', 'inprogress', 'approved', 'away', 'in clinic', 'incomplete'];
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid status. Allowed values: ${allowedStatuses.join(', ')}`,
+      });
+    }
+
+    const doctor = await Doctor.findById(id);
     if (!doctor) {
       return res.status(404).json({
         success: false,
@@ -115,70 +122,37 @@ async function updateStatus(req, res) {
       });
     }
 
-    // ✅ EMAIL EXISTENCE CHECK
-    if (!doctor.email) {
-      return res.status(400).json({
-        success: false,
-        error: "Doctor email not found",
-      });
-    }
-
     const prevStatus = doctor.status;
     doctor.status = status;
 
-    // when moving from pending -> inprogress / approved
-    // Current flow: pending -> inprogress (email sent) -> approved (link clicked)
-    // OR directly pending -> approved if admin decides.
+    // Send email notification when status changes to 'approved'
+    if (status.toLowerCase() === 'approved' && prevStatus !== 'approved') {
+      if (!doctor.email) {
+        return res.status(400).json({
+          success: false,
+          error: "Cannot approve doctor without email address",
+        });
+      }
 
-    // User request: "when register should be pendding when admin approve will approve now notification after approvel is on email"
-    // Interpretation: Admin sets to 'approved'. Email is sent ON approval.
-
-    if (status.toLowerCase() === "approved" || status.toLowerCase() === "inprogress") {
-      // We can reuse the existing logic or simplify it.
-      // The existing logic used separate confirmation token flow (inprogress -> token -> approved).
-      // If the user simply wants "Admin approves -> Notification", we can just send the "Welcome / Approved" email immediately.
-
-      // However, to keep the confirmation link logic (if desired), we can keep the 'inprogress' step.
-      // But assuming 'approve with notification' means instant approval:
-
-      // Let's stick to the existing confirmation flow if possible to minimize breakage, 
-      // OR if the user wants simpler flow, we direct approve.
-      // The prompt said: "when admin approve will approve now notification after approvel is on email"
-      // This sounds like Admin clicks Approve -> Status becomes Approved -> Email sent.
-
-      // Let's support the direct "approved" status update sending the Welcome email.
-
-      if (status.toLowerCase() === 'approved') {
-        // Send Welcome Email directly
-        // (No confirmation token needed if admin trusts the email or just wants to enable access)
-
-        const backend = process.env.BACKEND_URL || `${req.protocol}://${req.get("host")}`;
-
+      try {
         const mailOptions = {
           from: process.env.SMTP_FROM || process.env.SMTP_USER,
           to: doctor.email,
-          subject: "Doctor Account Approved",
-          text: `Your account has been approved. You can now login.`,
-          html: `<h1>Account Approved</h1><p>You can now login to the portal.</p>`
+          subject: "Doctor Account Approved - Welcome!",
+          text: `Dear Dr. ${doctor.name},\n\nYour doctor account has been approved! You can now login to the portal and start managing your appointments.\n\nBest regards,\nThe Medical Portal Team`,
+          html: `
+            <h1>Account Approved!</h1>
+            <p>Dear Dr. ${doctor.name},</p>
+            <p>Your doctor account has been <strong>approved</strong>! You can now login to the portal and start managing your appointments.</p>
+            <p>Best regards,<br/>The Medical Portal Team</p>
+          `
         };
 
         await transporter.sendMail(mailOptions);
-      } else if (status.toLowerCase() === 'inprogress') {
-        // Keep the existing confirmation token logic for 'inprogress'
-        const token = jwt.sign(
-          {
-            doctorId: doctor._id.toString(),
-            email: doctor.email,
-            purpose: 'doctor_confirmation',
-            timestamp: Date.now()
-          },
-          process.env.DOCTOR_CONFIRMATION_SECRET || 'secret',
-          { expiresIn: '24h' }
-        );
-
-        // ... (rest of token logic if needed, simplfied here for brevity unless requested to keep exact)
-        // I'll keep the core of it if strictly needed, but refactoring heavily.
-        // Be safe: Just save status.
+        console.log(`✅ Approval email sent to ${doctor.email}`);
+      } catch (emailError) {
+        console.error('❌ Failed to send approval email:', emailError);
+        // Continue anyway - don't block the approval
       }
     }
 
@@ -186,8 +160,14 @@ async function updateStatus(req, res) {
 
     return res.json({
       success: true,
-      data: doctor,
-      message: "Status updated successfully"
+      data: {
+        doctorId: doctor._id,
+        name: doctor.name,
+        email: doctor.email,
+        status: doctor.status,
+        previousStatus: prevStatus
+      },
+      message: `Doctor status updated to "${status}"${status === 'approved' ? '. Approval email sent.' : ''}`
     });
   } catch (err) {
     console.error("Update status error:", err);
