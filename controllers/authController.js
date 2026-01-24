@@ -4,6 +4,7 @@ const jwt = require("jsonwebtoken");
 const { OAuth2Client } = require("google-auth-library");
 const User = require("../models/User");
 const Otp = require("../models/Otp");
+const Patient = require("../models/Patient");
 const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require('../utils/ApiResponse');
@@ -102,7 +103,23 @@ const verifyOtp = asyncHandler(async (req, res) => {
   }
 
   // Mark user as verified
-  await User.findByIdAndUpdate(userId, { isVerified: true });
+  const user = await User.findById(userId).select("+password");
+  if (!user) throw new ApiError(404, "User not found");
+
+  user.isVerified = true;
+  await user.save();
+
+  // Create Patient profile if role is patient
+  if (user.role === 'patient') {
+    const existingPatient = await Patient.findOne({ userId: user._id });
+    if (!existingPatient) {
+      await Patient.create({
+        userId: user._id,
+        whatsappnumber: user.whatsappnumber,
+        password: user.password // As requested by user to have password in profile
+      });
+    }
+  }
 
   // Delete OTP record after successful verification
   await Otp.deleteOne({ _id: otpRecord._id });
