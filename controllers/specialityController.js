@@ -25,9 +25,26 @@ const seedSpecialities = asyncHandler(async (req, res) => {
 const getSpecialities = asyncHandler(async (req, res) => {
     const specialities = await Speciality.find({}).sort({ speciality: 1 });
 
+    // Transform the response to use cleaner field names
+    const transformedSpecialities = specialities.map(spec => {
+        const specObj = spec.toObject();
+
+        return {
+            specialityId: specObj._id,
+            name: specObj.speciality,
+            superSpecialities: specObj.super_specialities?.map(ss => ({
+                superSpecialityId: ss._id,
+                name: ss.name,
+                services: ss.services
+            })) || [],
+            createdAt: specObj.createdAt,
+            updatedAt: specObj.updatedAt
+        };
+    });
+
     res
         .status(200)
-        .json(new ApiResponse(200, specialities, "Specialities fetched successfully"));
+        .json(new ApiResponse(200, transformedSpecialities, "Specialities fetched successfully"));
 });
 
 const SpecialitySuggestion = require("../models/SpecialitySuggestion");
