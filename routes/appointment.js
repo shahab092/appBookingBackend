@@ -2,21 +2,22 @@ const express = require("express");
 const router = express.Router();
 const {
   bookAppointment,
-  getPatientAppointments,
-  getDoctorAppointments,
+  getMyAppointments,
   updateAppointmentStatus
 } = require("../controllers/appointmentController");
+const verifyJWT = require("../middleware/auth");
+const verifyOptionalJWT = require("../middleware/optionalAuth");
 
-// POST /api/appointments/book
-router.post("/book", bookAppointment);
+// POST /api/appointments - Book a new appointment (Public/Optional Login)
+router.post("/", verifyOptionalJWT, bookAppointment);
 
-// GET /api/appointments/patient/:patientId
-router.get("/patient/:patientId", getPatientAppointments);
+// All following routes require strict authentication
+router.use(verifyJWT);
 
-// GET /api/appointments/doctor/:doctorId
-router.get("/doctor/:doctorId", getDoctorAppointments);
+// GET /api/appointments/my - Get user's appointments
+router.get("/my", getMyAppointments);
 
-router.patch("/:appointmentId/status", updateAppointmentStatus);
-
+// PATCH /api/appointments/:id/status - Update appointment status
+router.patch("/:id/status", updateAppointmentStatus);
 
 module.exports = router;
