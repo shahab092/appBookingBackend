@@ -1,0 +1,1156 @@
+[
+    {
+        "whatsappnumber": "923001234501",
+        "password": "Doctor@123",
+        "name": "Dr. Ahmed Hassan",
+        "email": "ahmed.hassan@hospital.pk",
+        "emergencyContact": "+923001234501",
+        "address": {
+            "street": "House 45, Street 12, F-7/2",
+            "city": "Islamabad"
+        },
+        "pmdcRegistrationNumber": "PMDC-78901",
+        "specialityId": "6973f03ec6030a4d3823e9db",
+        "superSpeciality": "Interventional Cardiology",
+        "consultationTime": 20,
+        "experience": 15,
+        "status": "approved",
+        "locations": [
+            {
+                "name": "Shifa International Hospital",
+                "phone": "+92514603000",
+                "coordinates": {
+                    "lat": 33.6844,
+                    "lng": 73.0479
+                }
+            }
+        ],
+        "availability": [
+            {
+                "day": "Monday",
+                "startTime": "09:00",
+                "endTime": "13:00",
+                "appointmentType": "inclinic",
+                "locationName": "Shifa International Hospital"
+            },
+            {
+                "day": "Wednesday",
+                "startTime": "14:00",
+                "endTime": "18:00",
+                "appointmentType": "inclinic",
+                "locationName": "Shifa International Hospital"
+            }
+        ],
+        "education": [
+            {
+                "degree": "MBBS",
+                "institute": "Aga Khan University",
+                "startYear": "2000",
+                "endYear": "2005"
+            },
+            {
+                "degree": "FCPS Cardiology",
+                "institute": "College of Physicians and Surgeons Pakistan",
+                "startYear": "2006",
+                "endYear": "2010"
+            }
+        ]
+    },
+    {
+        "whatsappnumber": "923001234502",
+        "password": "Doctor@123",
+        "name": "Dr. Fatima Malik",
+        "email": "fatima.malik@hospital.pk",
+        "emergencyContact": "+923001234502",
+        "address": {
+            "street": "Apartment 301, DHA Phase 5",
+            "city": "Karachi"
+        },
+        "pmdcRegistrationNumber": "PMDC-78902",
+        "specialityId": "6973f03ec6030a4d3823e9e0",
+        "superSpeciality": "Stroke Specialist",
+        "consultationTime": 15,
+        "experience": 12,
+        "status": "approved",
+        "locations": [
+            {
+                "name": "Aga Khan University Hospital",
+                "phone": "+92213486051",
+                "coordinates": {
+                    "lat": 24.8607,
+                    "lng": 67.0011
+                }
+            }
+        ],
+        "availability": [
+            {
+                "day": "Tuesday",
+                "startTime": "10:00",
+                "endTime": "14:00",
+                "appointmentType": "inclinic",
+                "locationName": "Aga Khan University Hospital"
+            },
+            {
+                "day": "Thursday",
+                "startTime": "10:00",
+                "endTime": "14:00",
+                "appointmentType": "inclinic",
+                "locationName": "Aga Khan University Hospital"
+            }
+        ],
+        "education": [
+            {
+                "degree": "MBBS",
+                "institute": "Dow Medical College",
+                "startYear": "2003",
+                "endYear": "2008"
+            },
+            {
+                "degree": "FCPS Neurology",
+                "institute": "CPSP",
+                "startYear": "2009",
+                "endYear": "2013"
+            }
+        ]
+    },
+    {
+        "whatsappnumber": "923001234503",
+        "password": "Doctor@123",
+        "name": "Dr. Ali Raza",
+        "email": "ali.raza@hospital.pk",
+        "emergencyContact": "+923001234503",
+        "address": {
+            "street": "House 78, Gulberg III",
+            "city": "Lahore"
+        },
+        "pmdcRegistrationNumber": "PMDC-78903",
+        "specialityId": "6973f03ec6030a4d3823e9e3",
+        "superSpeciality": "Joint Replacement",
+        "consultationTime": 20,
+        "experience": 18,
+        "status": "approved",
+        "locations": [
+            {
+                "name": "Hameed Latif Hospital",
+                "phone": "+92423578200",
+                "coordinates": {
+                    "lat": 31.4697,
+                    "lng": 74.2728
+                }
+            }
+        ],
+        "availability": [
+            {
+                "day": "Monday",
+                "startTime": "15:00",
+                "endTime": "19:00",
+                "appointmentType": "inclinic",
+                "locationName": "Hameed Latif Hospital"
+            },
+            {
+                "day": "Friday",
+                "startTime": "09:00",
+                "endTime": "13:00",
+                "appointmentType": "inclinic",
+                "locationName": "Hameed Latif Hospital"
+            }
+        ],
+        "education": [
+            {
+                "degree": "MBBS",
+                "institute": "King Edward Medical University",
+                "startYear": "1998",
+                "endYear": "2003"
+            },
+            {
+                "degree": "FCPS Orthopedics",
+                "institute": "CPSP",
+                "startYear": "2004",
+                "endYear": "2008"
+            }
+        ]
+    },
+    {
+        "whatsappnumber": "923001234504",
+        "password": "Doctor@123",
+        "name": "Dr. Sara Khan",
+        "email": "sara.khan@hospital.pk",
+        "emergencyContact": "+923001234504",
+        "address": {
+            "street": "Flat 12, Clifton Block 8",
+            "city": "Karachi"
+        },
+        "pmdcRegistrationNumber": "PMDC-78904",
+        "specialityId": "6973f03ec6030a4d3823e9e6",
+        "superSpeciality": "Infertility / IVF",
+        "consultationTime": 30,
+        "experience": 10,
+        "status": "approved",
+        "locations": [
+            {
+                "name": "South City Hospital",
+                "phone": "+92213504000",
+                "coordinates": {
+                    "lat": 24.8138,
+                    "lng": 67.0287
+                }
+            }
+        ],
+        "availability": [
+            {
+                "day": "Wednesday",
+                "startTime": "09:00",
+                "endTime": "13:00",
+                "appointmentType": "inclinic",
+                "locationName": "South City Hospital"
+            },
+            {
+                "day": "Saturday",
+                "startTime": "14:00",
+                "endTime": "18:00",
+                "appointmentType": "inclinic",
+                "locationName": "South City Hospital"
+            }
+        ],
+        "education": [
+            {
+                "degree": "MBBS",
+                "institute": "Jinnah Sindh Medical University",
+                "startYear": "2005",
+                "endYear": "2010"
+            },
+            {
+                "degree": "FCPS Gynecology",
+                "institute": "CPSP",
+                "startYear": "2011",
+                "endYear": "2015"
+            }
+        ]
+    },
+    {
+        "whatsappnumber": "923001234505",
+        "password": "Doctor@123",
+        "name": "Dr. Usman Tariq",
+        "email": "usman.tariq@hospital.pk",
+        "emergencyContact": "+923001234505",
+        "address": {
+            "street": "House 234, Bahria Town Phase 4",
+            "city": "Rawalpindi"
+        },
+        "pmdcRegistrationNumber": "PMDC-78905",
+        "specialityId": "6973f03ec6030a4d3823e9f2",
+        "superSpeciality": "Endoscopy",
+        "consultationTime": 15,
+        "experience": 14,
+        "status": "approved",
+        "locations": [
+            {
+                "name": "Fauji Foundation Hospital",
+                "phone": "+92515102601",
+                "coordinates": {
+                    "lat": 33.5651,
+                    "lng": 73.0169
+                }
+            }
+        ],
+        "availability": [
+            {
+                "day": "Tuesday",
+                "startTime": "08:00",
+                "endTime": "12:00",
+                "appointmentType": "inclinic",
+                "locationName": "Fauji Foundation Hospital"
+            },
+            {
+                "day": "Thursday",
+                "startTime": "15:00",
+                "endTime": "19:00",
+                "appointmentType": "inclinic",
+                "locationName": "Fauji Foundation Hospital"
+            }
+        ],
+        "education": [
+            {
+                "degree": "MBBS",
+                "institute": "Rawalpindi Medical College",
+                "startYear": "2002",
+                "endYear": "2007"
+            },
+            {
+                "degree": "FCPS Gastroenterology",
+                "institute": "CPSP",
+                "startYear": "2008",
+                "endYear": "2012"
+            }
+        ]
+    },
+    {
+        "whatsappnumber": "923001234506",
+        "password": "Doctor@123",
+        "name": "Dr. Ayesha Siddiqui",
+        "email": "ayesha.siddiqui@hospital.pk",
+        "emergencyContact": "+923001234506",
+        "address": {
+            "street": "Villa 45, Defence Phase 6",
+            "city": "Karachi"
+        },
+        "pmdcRegistrationNumber": "PMDC-78906",
+        "specialityId": "6973f03ec6030a4d3823e9e9",
+        "superSpeciality": "Cosmetic Dermatology",
+        "consultationTime": 20,
+        "experience": 8,
+        "status": "approved",
+        "locations": [
+            {
+                "name": "Skin & Aesthetic Clinic",
+                "phone": "+92213582000",
+                "coordinates": {
+                    "lat": 24.8015,
+                    "lng": 67.0361
+                }
+            }
+        ],
+        "availability": [
+            {
+                "day": "Monday",
+                "startTime": "11:00",
+                "endTime": "15:00",
+                "appointmentType": "inclinic",
+                "locationName": "Skin & Aesthetic Clinic"
+            },
+            {
+                "day": "Wednesday",
+                "startTime": "11:00",
+                "endTime": "15:00",
+                "appointmentType": "inclinic",
+                "locationName": "Skin & Aesthetic Clinic"
+            },
+            {
+                "day": "Friday",
+                "startTime": "11:00",
+                "endTime": "15:00",
+                "appointmentType": "inclinic",
+                "locationName": "Skin & Aesthetic Clinic"
+            }
+        ],
+        "education": [
+            {
+                "degree": "MBBS",
+                "institute": "Liaquat National Medical College",
+                "startYear": "2007",
+                "endYear": "2012"
+            },
+            {
+                "degree": "Diploma in Dermatology",
+                "institute": "Royal College UK",
+                "startYear": "2013",
+                "endYear": "2015"
+            }
+        ]
+    },
+    {
+        "whatsappnumber": "923001234507",
+        "password": "Doctor@123",
+        "name": "Dr. Hassan Ali",
+        "email": "hassan.ali@hospital.pk",
+        "emergencyContact": "+923001234507",
+        "address": {
+            "street": "Apartment 501, Johar Town",
+            "city": "Lahore"
+        },
+        "pmdcRegistrationNumber": "PMDC-78907",
+        "specialityId": "6973f03ec6030a4d3823e9f8",
+        "superSpeciality": "Neonatology",
+        "consultationTime": 15,
+        "experience": 11,
+        "status": "approved",
+        "locations": [
+            {
+                "name": "Children's Hospital Lahore",
+                "phone": "+92423711801",
+                "coordinates": {
+                    "lat": 31.5497,
+                    "lng": 74.3436
+                }
+            }
+        ],
+        "availability": [
+            {
+                "day": "Monday",
+                "startTime": "09:00",
+                "endTime": "13:00",
+                "appointmentType": "inclinic",
+                "locationName": "Children's Hospital Lahore"
+            },
+            {
+                "day": "Tuesday",
+                "startTime": "09:00",
+                "endTime": "13:00",
+                "appointmentType": "inclinic",
+                "locationName": "Children's Hospital Lahore"
+            },
+            {
+                "day": "Thursday",
+                "startTime": "09:00",
+                "endTime": "13:00",
+                "appointmentType": "inclinic",
+                "locationName": "Children's Hospital Lahore"
+            }
+        ],
+        "education": [
+            {
+                "degree": "MBBS",
+                "institute": "Allama Iqbal Medical College",
+                "startYear": "2004",
+                "endYear": "2009"
+            },
+            {
+                "degree": "FCPS Pediatrics",
+                "institute": "CPSP",
+                "startYear": "2010",
+                "endYear": "2014"
+            }
+        ]
+    },
+    {
+        "whatsappnumber": "923001234508",
+        "password": "Doctor@123",
+        "name": "Dr. Zainab Ahmed",
+        "email": "zainab.ahmed@hospital.pk",
+        "emergencyContact": "+923001234508",
+        "address": {
+            "street": "House 89, Model Town",
+            "city": "Lahore"
+        },
+        "pmdcRegistrationNumber": "PMDC-78908",
+        "specialityId": "6973f03ec6030a4d3823e9ec",
+        "superSpeciality": "Head & Neck Surgery",
+        "consultationTime": 20,
+        "experience": 13,
+        "status": "approved",
+        "locations": [
+            {
+                "name": "Surgimed Hospital",
+                "phone": "+92423578100",
+                "coordinates": {
+                    "lat": 31.4504,
+                    "lng": 74.2669
+                }
+            }
+        ],
+        "availability": [
+            {
+                "day": "Wednesday",
+                "startTime": "14:00",
+                "endTime": "18:00",
+                "appointmentType": "inclinic",
+                "locationName": "Surgimed Hospital"
+            },
+            {
+                "day": "Saturday",
+                "startTime": "10:00",
+                "endTime": "14:00",
+                "appointmentType": "inclinic",
+                "locationName": "Surgimed Hospital"
+            }
+        ],
+        "education": [
+            {
+                "degree": "MBBS",
+                "institute": "Fatima Jinnah Medical College",
+                "startYear": "2002",
+                "endYear": "2007"
+            },
+            {
+                "degree": "FCPS ENT",
+                "institute": "CPSP",
+                "startYear": "2008",
+                "endYear": "2012"
+            }
+        ]
+    },
+    {
+        "whatsappnumber": "923001234509",
+        "password": "Doctor@123",
+        "name": "Dr. Bilal Hussain",
+        "email": "bilal.hussain@hospital.pk",
+        "emergencyContact": "+923001234509",
+        "address": {
+            "street": "Flat 203, Askari 11",
+            "city": "Lahore"
+        },
+        "pmdcRegistrationNumber": "PMDC-78909",
+        "specialityId": "6973f03ec6030a4d3823e9ef",
+        "superSpeciality": "Uro-Oncology",
+        "consultationTime": 25,
+        "experience": 16,
+        "status": "approved",
+        "locations": [
+            {
+                "name": "Doctors Hospital Lahore",
+                "phone": "+92424232581",
+                "coordinates": {
+                    "lat": 31.4697,
+                    "lng": 74.4097
+                }
+            }
+        ],
+        "availability": [
+            {
+                "day": "Monday",
+                "startTime": "16:00",
+                "endTime": "20:00",
+                "appointmentType": "inclinic",
+                "locationName": "Doctors Hospital Lahore"
+            },
+            {
+                "day": "Thursday",
+                "startTime": "16:00",
+                "endTime": "20:00",
+                "appointmentType": "inclinic",
+                "locationName": "Doctors Hospital Lahore"
+            }
+        ],
+        "education": [
+            {
+                "degree": "MBBS",
+                "institute": "Nishtar Medical College",
+                "startYear": "1999",
+                "endYear": "2004"
+            },
+            {
+                "degree": "FCPS Urology",
+                "institute": "CPSP",
+                "startYear": "2005",
+                "endYear": "2009"
+            }
+        ]
+    },
+    {
+        "whatsappnumber": "923001234510",
+        "password": "Doctor@123",
+        "name": "Dr. Mariam Noor",
+        "email": "mariam.noor@hospital.pk",
+        "emergencyContact": "+923001234510",
+        "address": {
+            "street": "House 12, F-10/3",
+            "city": "Islamabad"
+        },
+        "pmdcRegistrationNumber": "PMDC-78910",
+        "specialityId": "6973f03ec6030a4d3823e9f5",
+        "superSpeciality": "Medical Oncology",
+        "consultationTime": 30,
+        "experience": 9,
+        "status": "approved",
+        "locations": [
+            {
+                "name": "NORI Cancer Hospital",
+                "phone": "+92512255100",
+                "coordinates": {
+                    "lat": 33.6973,
+                    "lng": 73.0515
+                }
+            }
+        ],
+        "availability": [
+            {
+                "day": "Tuesday",
+                "startTime": "09:00",
+                "endTime": "13:00",
+                "appointmentType": "inclinic",
+                "locationName": "NORI Cancer Hospital"
+            },
+            {
+                "day": "Friday",
+                "startTime": "14:00",
+                "endTime": "18:00",
+                "appointmentType": "inclinic",
+                "locationName": "NORI Cancer Hospital"
+            }
+        ],
+        "education": [
+            {
+                "degree": "MBBS",
+                "institute": "Shifa College of Medicine",
+                "startYear": "2006",
+                "endYear": "2011"
+            },
+            {
+                "degree": "FCPS Oncology",
+                "institute": "CPSP",
+                "startYear": "2012",
+                "endYear": "2016"
+            }
+        ]
+    },
+    {
+        "whatsappnumber": "923001234511",
+        "password": "Doctor@123",
+        "name": "Dr. Kamran Shah",
+        "email": "kamran.shah@hospital.pk",
+        "emergencyContact": "+923001234511",
+        "address": {
+            "street": "Villa 78, Bahria Town",
+            "city": "Karachi"
+        },
+        "pmdcRegistrationNumber": "PMDC-78911",
+        "specialityId": "6973f03ec6030a4d3823e9db",
+        "superSpeciality": "Electrophysiology",
+        "consultationTime": 20,
+        "experience": 14,
+        "status": "approved",
+        "locations": [
+            {
+                "name": "Tabba Heart Institute",
+                "phone": "+92213400100",
+                "coordinates": {
+                    "lat": 24.9056,
+                    "lng": 67.0822
+                }
+            }
+        ],
+        "availability": [
+            {
+                "day": "Monday",
+                "startTime": "10:00",
+                "endTime": "14:00",
+                "appointmentType": "inclinic",
+                "locationName": "Tabba Heart Institute"
+            },
+            {
+                "day": "Wednesday",
+                "startTime": "10:00",
+                "endTime": "14:00",
+                "appointmentType": "inclinic",
+                "locationName": "Tabba Heart Institute"
+            }
+        ],
+        "education": [
+            {
+                "degree": "MBBS",
+                "institute": "Sindh Medical College",
+                "startYear": "2001",
+                "endYear": "2006"
+            },
+            {
+                "degree": "FCPS Cardiology",
+                "institute": "CPSP",
+                "startYear": "2007",
+                "endYear": "2011"
+            }
+        ]
+    },
+    {
+        "whatsappnumber": "923001234512",
+        "password": "Doctor@123",
+        "name": "Dr. Hina Asif",
+        "email": "hina.asif@hospital.pk",
+        "emergencyContact": "+923001234512",
+        "address": {
+            "street": "Apartment 405, Gulistan-e-Jauhar",
+            "city": "Karachi"
+        },
+        "pmdcRegistrationNumber": "PMDC-78912",
+        "specialityId": "6973f03ec6030a4d3823e9e6",
+        "superSpeciality": "High Risk Pregnancy",
+        "consultationTime": 25,
+        "experience": 12,
+        "status": "approved",
+        "locations": [
+            {
+                "name": "Liaquat National Hospital",
+                "phone": "+92213411051",
+                "coordinates": {
+                    "lat": 24.8829,
+                    "lng": 67.0667
+                }
+            }
+        ],
+        "availability": [
+            {
+                "day": "Tuesday",
+                "startTime": "15:00",
+                "endTime": "19:00",
+                "appointmentType": "inclinic",
+                "locationName": "Liaquat National Hospital"
+            },
+            {
+                "day": "Thursday",
+                "startTime": "15:00",
+                "endTime": "19:00",
+                "appointmentType": "inclinic",
+                "locationName": "Liaquat National Hospital"
+            }
+        ],
+        "education": [
+            {
+                "degree": "MBBS",
+                "institute": "Dow Medical College",
+                "startYear": "2003",
+                "endYear": "2008"
+            },
+            {
+                "degree": "FCPS Gynecology",
+                "institute": "CPSP",
+                "startYear": "2009",
+                "endYear": "2013"
+            }
+        ]
+    },
+    {
+        "whatsappnumber": "923001234513",
+        "password": "Doctor@123",
+        "name": "Dr. Imran Malik",
+        "email": "imran.malik@hospital.pk",
+        "emergencyContact": "+923001234513",
+        "address": {
+            "street": "House 56, Cavalry Ground",
+            "city": "Lahore"
+        },
+        "pmdcRegistrationNumber": "PMDC-78913",
+        "specialityId": "6973f03ec6030a4d3823e9e3",
+        "superSpeciality": "Spine Surgery",
+        "consultationTime": 20,
+        "experience": 17,
+        "status": "approved",
+        "locations": [
+            {
+                "name": "National Hospital Lahore",
+                "phone": "+92423578200",
+                "coordinates": {
+                    "lat": 31.5204,
+                    "lng": 74.3587
+                }
+            }
+        ],
+        "availability": [
+            {
+                "day": "Monday",
+                "startTime": "14:00",
+                "endTime": "18:00",
+                "appointmentType": "inclinic",
+                "locationName": "National Hospital Lahore"
+            },
+            {
+                "day": "Friday",
+                "startTime": "10:00",
+                "endTime": "14:00",
+                "appointmentType": "inclinic",
+                "locationName": "National Hospital Lahore"
+            }
+        ],
+        "education": [
+            {
+                "degree": "MBBS",
+                "institute": "King Edward Medical University",
+                "startYear": "1998",
+                "endYear": "2003"
+            },
+            {
+                "degree": "FCPS Orthopedics",
+                "institute": "CPSP",
+                "startYear": "2004",
+                "endYear": "2008"
+            }
+        ]
+    },
+    {
+        "whatsappnumber": "923001234514",
+        "password": "Doctor@123",
+        "name": "Dr. Sana Iqbal",
+        "email": "sana.iqbal@hospital.pk",
+        "emergencyContact": "+923001234514",
+        "address": {
+            "street": "Flat 801, Centaurus Mall",
+            "city": "Islamabad"
+        },
+        "pmdcRegistrationNumber": "PMDC-78914",
+        "specialityId": "6973f03ec6030a4d3823e9e9",
+        "superSpeciality": "Dermatologic Surgery",
+        "consultationTime": 15,
+        "experience": 7,
+        "status": "approved",
+        "locations": [
+            {
+                "name": "Islamabad Diagnostic Center",
+                "phone": "+92512260508",
+                "coordinates": {
+                    "lat": 33.7077,
+                    "lng": 73.0578
+                }
+            }
+        ],
+        "availability": [
+            {
+                "day": "Wednesday",
+                "startTime": "10:00",
+                "endTime": "14:00",
+                "appointmentType": "inclinic",
+                "locationName": "Islamabad Diagnostic Center"
+            },
+            {
+                "day": "Saturday",
+                "startTime": "10:00",
+                "endTime": "14:00",
+                "appointmentType": "inclinic",
+                "locationName": "Islamabad Diagnostic Center"
+            }
+        ],
+        "education": [
+            {
+                "degree": "MBBS",
+                "institute": "Rawalpindi Medical College",
+                "startYear": "2008",
+                "endYear": "2013"
+            },
+            {
+                "degree": "FCPS Dermatology",
+                "institute": "CPSP",
+                "startYear": "2014",
+                "endYear": "2018"
+            }
+        ]
+    },
+    {
+        "whatsappnumber": "923001234515",
+        "password": "Doctor@123",
+        "name": "Dr. Faisal Mahmood",
+        "email": "faisal.mahmood@hospital.pk",
+        "emergencyContact": "+923001234515",
+        "address": {
+            "street": "House 123, Wapda Town",
+            "city": "Lahore"
+        },
+        "pmdcRegistrationNumber": "PMDC-78915",
+        "specialityId": "6973f03ec6030a4d3823e9f2",
+        "superSpeciality": "Hepatology",
+        "consultationTime": 20,
+        "experience": 15,
+        "status": "approved",
+        "locations": [
+            {
+                "name": "Shaikh Zayed Hospital",
+                "phone": "+92423590161",
+                "coordinates": {
+                    "lat": 31.4504,
+                    "lng": 74.3587
+                }
+            }
+        ],
+        "availability": [
+            {
+                "day": "Monday",
+                "startTime": "09:00",
+                "endTime": "13:00",
+                "appointmentType": "inclinic",
+                "locationName": "Shaikh Zayed Hospital"
+            },
+            {
+                "day": "Thursday",
+                "startTime": "14:00",
+                "endTime": "18:00",
+                "appointmentType": "inclinic",
+                "locationName": "Shaikh Zayed Hospital"
+            }
+        ],
+        "education": [
+            {
+                "degree": "MBBS",
+                "institute": "Services Institute of Medical Sciences",
+                "startYear": "2000",
+                "endYear": "2005"
+            },
+            {
+                "degree": "FCPS Gastroenterology",
+                "institute": "CPSP",
+                "startYear": "2006",
+                "endYear": "2010"
+            }
+        ]
+    },
+    {
+        "whatsappnumber": "923001234516",
+        "password": "Doctor@123",
+        "name": "Dr. Rabia Tariq",
+        "email": "rabia.tariq@hospital.pk",
+        "emergencyContact": "+923001234516",
+        "address": {
+            "street": "Villa 34, DHA Phase 2",
+            "city": "Islamabad"
+        },
+        "pmdcRegistrationNumber": "PMDC-78916",
+        "specialityId": "6973f03ec6030a4d3823e9e0",
+        "superSpeciality": "Epilepsy Specialist",
+        "consultationTime": 15,
+        "experience": 10,
+        "status": "approved",
+        "locations": [
+            {
+                "name": "Maroof International Hospital",
+                "phone": "+92514861111",
+                "coordinates": {
+                    "lat": 33.6844,
+                    "lng": 73.0479
+                }
+            }
+        ],
+        "availability": [
+            {
+                "day": "Tuesday",
+                "startTime": "11:00",
+                "endTime": "15:00",
+                "appointmentType": "inclinic",
+                "locationName": "Maroof International Hospital"
+            },
+            {
+                "day": "Friday",
+                "startTime": "11:00",
+                "endTime": "15:00",
+                "appointmentType": "inclinic",
+                "locationName": "Maroof International Hospital"
+            }
+        ],
+        "education": [
+            {
+                "degree": "MBBS",
+                "institute": "Army Medical College",
+                "startYear": "2005",
+                "endYear": "2010"
+            },
+            {
+                "degree": "FCPS Neurology",
+                "institute": "CPSP",
+                "startYear": "2011",
+                "endYear": "2015"
+            }
+        ]
+    },
+    {
+        "whatsappnumber": "923001234517",
+        "password": "Doctor@123",
+        "name": "Dr. Tariq Jamil",
+        "email": "tariq.jamil@hospital.pk",
+        "emergencyContact": "+923001234517",
+        "address": {
+            "street": "Apartment 602, Nishat Commercial",
+            "city": "Karachi"
+        },
+        "pmdcRegistrationNumber": "PMDC-78917",
+        "specialityId": "6973f03ec6030a4d3823e9ec",
+        "superSpeciality": "Pediatric ENT",
+        "consultationTime": 15,
+        "experience": 11,
+        "status": "approved",
+        "locations": [
+            {
+                "name": "Ziauddin Hospital",
+                "phone": "+92213583091",
+                "coordinates": {
+                    "lat": 24.8607,
+                    "lng": 67.0011
+                }
+            }
+        ],
+        "availability": [
+            {
+                "day": "Monday",
+                "startTime": "15:00",
+                "endTime": "19:00",
+                "appointmentType": "inclinic",
+                "locationName": "Ziauddin Hospital"
+            },
+            {
+                "day": "Wednesday",
+                "startTime": "15:00",
+                "endTime": "19:00",
+                "appointmentType": "inclinic",
+                "locationName": "Ziauddin Hospital"
+            }
+        ],
+        "education": [
+            {
+                "degree": "MBBS",
+                "institute": "Baqai Medical University",
+                "startYear": "2004",
+                "endYear": "2009"
+            },
+            {
+                "degree": "FCPS ENT",
+                "institute": "CPSP",
+                "startYear": "2010",
+                "endYear": "2014"
+            }
+        ]
+    },
+    {
+        "whatsappnumber": "923001234518",
+        "password": "Doctor@123",
+        "name": "Dr. Nadia Saleem",
+        "email": "nadia.saleem@hospital.pk",
+        "emergencyContact": "+923001234518",
+        "address": {
+            "street": "House 45, Sector E-11",
+            "city": "Islamabad"
+        },
+        "pmdcRegistrationNumber": "PMDC-78918",
+        "specialityId": "6973f03ec6030a4d3823e9f8",
+        "superSpeciality": "Pediatric Cardiology",
+        "consultationTime": 20,
+        "experience": 13,
+        "status": "approved",
+        "locations": [
+            {
+                "name": "Pakistan Institute of Medical Sciences",
+                "phone": "+92519261170",
+                "coordinates": {
+                    "lat": 33.7077,
+                    "lng": 73.0578
+                }
+            }
+        ],
+        "availability": [
+            {
+                "day": "Tuesday",
+                "startTime": "09:00",
+                "endTime": "13:00",
+                "appointmentType": "inclinic",
+                "locationName": "Pakistan Institute of Medical Sciences"
+            },
+            {
+                "day": "Thursday",
+                "startTime": "09:00",
+                "endTime": "13:00",
+                "appointmentType": "inclinic",
+                "locationName": "Pakistan Institute of Medical Sciences"
+            }
+        ],
+        "education": [
+            {
+                "degree": "MBBS",
+                "institute": "Khyber Medical College",
+                "startYear": "2002",
+                "endYear": "2007"
+            },
+            {
+                "degree": "FCPS Pediatrics",
+                "institute": "CPSP",
+                "startYear": "2008",
+                "endYear": "2012"
+            }
+        ]
+    },
+    {
+        "whatsappnumber": "923001234519",
+        "password": "Doctor@123",
+        "name": "Dr. Adnan Farooq",
+        "email": "adnan.farooq@hospital.pk",
+        "emergencyContact": "+923001234519",
+        "address": {
+            "street": "Flat 1001, Ocean Towers",
+            "city": "Karachi"
+        },
+        "pmdcRegistrationNumber": "PMDC-78919",
+        "specialityId": "6973f03ec6030a4d3823e9ef",
+        "superSpeciality": "Male Infertility",
+        "consultationTime": 20,
+        "experience": 9,
+        "status": "approved",
+        "locations": [
+            {
+                "name": "Patel Hospital",
+                "phone": "+92213452000",
+                "coordinates": {
+                    "lat": 24.8607,
+                    "lng": 67.0011
+                }
+            }
+        ],
+        "availability": [
+            {
+                "day": "Wednesday",
+                "startTime": "16:00",
+                "endTime": "20:00",
+                "appointmentType": "inclinic",
+                "locationName": "Patel Hospital"
+            },
+            {
+                "day": "Saturday",
+                "startTime": "10:00",
+                "endTime": "14:00",
+                "appointmentType": "inclinic",
+                "locationName": "Patel Hospital"
+            }
+        ],
+        "education": [
+            {
+                "degree": "MBBS",
+                "institute": "Karachi Medical & Dental College",
+                "startYear": "2006",
+                "endYear": "2011"
+            },
+            {
+                "degree": "FCPS Urology",
+                "institute": "CPSP",
+                "startYear": "2012",
+                "endYear": "2016"
+            }
+        ]
+    },
+    {
+        "whatsappnumber": "923001234520",
+        "password": "Doctor@123",
+        "name": "Dr. Mehwish Aslam",
+        "email": "mehwish.aslam@hospital.pk",
+        "emergencyContact": "+923001234520",
+        "address": {
+            "street": "House 89, Garden Town",
+            "city": "Lahore"
+        },
+        "pmdcRegistrationNumber": "PMDC-78920",
+        "specialityId": "6973f03ec6030a4d3823e9f5",
+        "superSpeciality": "Radiation Oncology",
+        "consultationTime": 25,
+        "experience": 11,
+        "status": "approved",
+        "locations": [
+            {
+                "name": "Shaukat Khanum Memorial Cancer Hospital",
+                "phone": "+92423590200",
+                "coordinates": {
+                    "lat": 31.4697,
+                    "lng": 74.2728
+                }
+            }
+        ],
+        "availability": [
+            {
+                "day": "Monday",
+                "startTime": "10:00",
+                "endTime": "14:00",
+                "appointmentType": "inclinic",
+                "locationName": "Shaukat Khanum Memorial Cancer Hospital"
+            },
+            {
+                "day": "Thursday",
+                "startTime": "10:00",
+                "endTime": "14:00",
+                "appointmentType": "inclinic",
+                "locationName": "Shaukat Khanum Memorial Cancer Hospital"
+            }
+        ],
+        "education": [
+            {
+                "degree": "MBBS",
+                "institute": "Fatima Jinnah Medical College",
+                "startYear": "2004",
+                "endYear": "2009"
+            },
+            {
+                "degree": "FCPS Oncology",
+                "institute": "CPSP",
+                "startYear": "2010",
+                "endYear": "2014"
+            }
+        ]
+    }
+]
