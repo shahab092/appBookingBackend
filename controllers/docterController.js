@@ -327,8 +327,8 @@ const updateDoctorProfile = asyncHandler(async (req, res) => {
 
     // If record doesn't exist, create it on the fly
     if (!doctor) {
-      if (!name || !email || !pmdcRegistrationNumber) {
-        throw new ApiError(400, "First-time setup requires name, email, and pmdcRegistrationNumber");
+      if (!name || !pmdcRegistrationNumber) {
+        throw new ApiError(400, "First-time setup requires name, and pmdcRegistrationNumber");
       }
       doctor = new Doctor({
         userId: req.user._id,
