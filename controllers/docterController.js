@@ -616,6 +616,95 @@ const getDoctorById = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, transformedDoctor, "Doctor details fetched successfully"));
 });
 
+// Search doctors by name and/or speciality
+const searchDoctors = asyncHandler(async (req, res) => {
+  const { search, specialityId } = req.query;
+
+  // Validate search query (minimum 3 characters)
+  if (search && search.length < 3) {
+    throw new ApiError(400, "Search query must be at least 3 characters");
+  }
+
+  const filter = { status: 'approved' }; // Only search approved doctors
+
+  // Add name search filter (case-insensitive)
+  if (search) {
+    filter.name = { $regex: search, $options: 'i' };
+  }
+
+  // Add speciality filter
+  if (specialityId) {
+    filter.speciality = specialityId;
+  }
+
+  const doctors = await Doctor.find(filter)
+    .populate('userId', 'whatsappnumber role -_id')
+    .populate('speciality')
+    .sort({ name: 1 });
+
+  // Transform the response
+  const transformedDoctors = doctors.map(doctor => {
+    const docObj = doctor.toObject();
+
+    let services = [];
+    if (docObj.speciality && docObj.superSpeciality) {
+      const matchingSuperSpec = docObj.speciality.super_specialities?.find(
+        ss => ss.name.toLowerCase() === docObj.superSpeciality.toLowerCase()
+      );
+      services = matchingSuperSpec?.services || [];
+    }
+
+    return {
+      doctorId: docObj._id,
+      userId: docObj.userId?._id,
+      whatsappnumber: docObj.userId?.whatsappnumber,
+      role: docObj.userId?.role,
+      name: docObj.name,
+      email: docObj.email,
+      emergencyContact: docObj.phone,
+      address: docObj.address,
+      speciality: docObj.speciality?.speciality || null,
+      specialityId: docObj.speciality?._id || null,
+      superSpeciality: docObj.superSpeciality,
+      services: services,
+      consultationTime: docObj.consultationTime,
+      locations: docObj.locations?.map(loc => ({
+        hospitalId: loc._id,
+        name: loc.name,
+        phone: loc.phone,
+        coordinates: loc.coordinates
+      })) || [],
+      availability: docObj.availability?.map(avail => ({
+        day: avail.day,
+        startTime: avail.startTime,
+        endTime: avail.endTime,
+        appointmentType: avail.appointmentType,
+        locationId: avail.locationId
+      })) || [],
+      education: docObj.education?.map(edu => ({
+        degree: edu.degree,
+        institute: edu.institute,
+        startYear: edu.startYear,
+        endYear: edu.endYear
+      })) || [],
+      isAvailable: docObj.isAvailable,
+      pmdcRegistrationNumber: docObj.pmdcRegistrationNumber,
+      status: docObj.status,
+      image: docObj.image,
+      experience: docObj.experience,
+      averageRating: docObj.averageRating,
+      numReviews: docObj.numReviews,
+      leaves: docObj.leaves,
+      completenessScore: docObj.completenessScore,
+      registrationDate: docObj.registrationDate,
+    };
+  });
+
+  res.status(200).json(
+    new ApiResponse(200, { count: transformedDoctors.length, doctors: transformedDoctors }, "Search results fetched successfully")
+  );
+});
+
 // Admin-only: Create single doctor account + profile
 const createDoctorByAdmin = asyncHandler(async (req, res) => {
   const { whatsappnumber, password, name, email, emergencyContact, address, pmdcRegistrationNumber, specialityId, superSpeciality, consultationTime, locations, availability, education, experience, image, status } = req.body;
@@ -700,6 +789,7 @@ module.exports = {
   updateStatus,
   getDoctors,
   getDoctorById,
+  searchDoctors,
   updateDoctorProfile,
   getAvailableSlots,
   addLeave,

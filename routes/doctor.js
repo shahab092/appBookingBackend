@@ -4,6 +4,7 @@ const {
     updateStatus,
     getDoctors,
     getDoctorById,
+    searchDoctors,
     updateDoctorProfile,
     getAvailableSlots,
     addLeave,
@@ -28,6 +29,9 @@ router.put('/update-profile', authenticate, updateDoctorProfile);
 
 // GET /api/doctors/available-slots - Get available slots for a doctor/date
 router.get('/available-slots', getAvailableSlots);
+
+// GET /api/doctor/search - Search doctors by name and/or speciality
+router.get('/search', searchDoctors);
 
 // GET /api/doctors/:id - Get single doctor by ID
 router.get('/:id', getDoctorById);
