@@ -11,7 +11,7 @@ const {
     removeLeave,
     suggestSpeciality
 } = require('../controllers/docterController');
-const { authenticate, authorize } = require('../middleware/auth');
+const authenticate = require('../middleware/auth');
 
 // POST /api/doctors - Create a new doctor
 router.post('/register', registerDoctor);
