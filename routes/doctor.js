@@ -5,6 +5,7 @@ const {
     getDoctors,
     getDoctorById,
     searchDoctors,
+    getCities,
     updateDoctorProfile,
     getAvailableSlots,
     addLeave,
@@ -29,6 +30,9 @@ router.put('/update-profile', authenticate, updateDoctorProfile);
 
 // GET /api/doctors/available-slots - Get available slots for a doctor/date
 router.get('/available-slots', getAvailableSlots);
+
+// GET /api/doctor/cities - Get unique cities for lookup
+router.get('/cities', getCities);
 
 // GET /api/doctor/search - Search doctors by name and/or speciality
 router.get('/search', searchDoctors);

@@ -29,8 +29,8 @@ const doctorSchema = new mongoose.Schema({
         required: true
     },
     address: {
-        type: String,
-        required: false
+        street: { type: String, required: false },
+        city: { type: String, required: false }
     },
     consultationTime: {
         type: Number,

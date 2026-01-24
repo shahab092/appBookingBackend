@@ -618,7 +618,7 @@ const getDoctorById = asyncHandler(async (req, res) => {
 
 // Search doctors by name and/or speciality
 const searchDoctors = asyncHandler(async (req, res) => {
-  const { search, specialityId } = req.query;
+  const { search, specialityId, city } = req.query;
 
   // Validate search query (minimum 3 characters)
   if (search && search.length < 3) {
@@ -635,6 +635,11 @@ const searchDoctors = asyncHandler(async (req, res) => {
   // Add speciality filter
   if (specialityId) {
     filter.speciality = specialityId;
+  }
+
+  // Add city filter (case-insensitive)
+  if (city) {
+    filter['address.city'] = { $regex: city, $options: 'i' };
   }
 
   const doctors = await Doctor.find(filter)
@@ -702,6 +707,18 @@ const searchDoctors = asyncHandler(async (req, res) => {
 
   res.status(200).json(
     new ApiResponse(200, { count: transformedDoctors.length, doctors: transformedDoctors }, "Search results fetched successfully")
+  );
+});
+
+// Get unique cities for lookup
+const getCities = asyncHandler(async (req, res) => {
+  const cities = await Doctor.distinct('address.city', { status: 'approved', 'address.city': { $ne: null, $ne: '' } });
+
+  // Sort alphabetically
+  const sortedCities = cities.sort((a, b) => a.localeCompare(b));
+
+  res.status(200).json(
+    new ApiResponse(200, { count: sortedCities.length, cities: sortedCities }, "Cities fetched successfully")
   );
 });
 
@@ -790,6 +807,7 @@ module.exports = {
   getDoctors,
   getDoctorById,
   searchDoctors,
+  getCities,
   updateDoctorProfile,
   getAvailableSlots,
   addLeave,
