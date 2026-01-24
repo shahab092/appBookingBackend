@@ -251,7 +251,49 @@ const updateDoctorProfile = asyncHandler(async (req, res) => {
   if (pmdcRegistrationNumber) doctor.pmdcRegistrationNumber = pmdcRegistrationNumber;
   if (address) doctor.address = address;
 
-  if (specialityId) doctor.speciality = specialityId;
+  // Validate specialityId if provided
+  if (specialityId) {
+    const specialityExists = await Speciality.findById(specialityId);
+    if (!specialityExists) {
+      throw new ApiError(400, "Invalid speciality ID. Speciality does not exist.");
+    }
+
+    // If superSpeciality is also provided, validate it belongs to this speciality
+    if (superSpeciality) {
+      const validSuperSpeciality = specialityExists.super_specialities.find(
+        ss => ss.name.toLowerCase() === superSpeciality.toLowerCase()
+      );
+
+      if (!validSuperSpeciality) {
+        throw new ApiError(
+          400,
+          `Invalid super speciality. "${superSpeciality}" is not a valid sub-speciality of "${specialityExists.speciality}".`
+        );
+      }
+    }
+
+    doctor.speciality = specialityId;
+  } else if (superSpeciality) {
+    // If superSpeciality is provided without specialityId, check if doctor already has a speciality
+    if (doctor.speciality) {
+      const currentSpeciality = await Speciality.findById(doctor.speciality);
+      if (currentSpeciality) {
+        const validSuperSpeciality = currentSpeciality.super_specialities.find(
+          ss => ss.name.toLowerCase() === superSpeciality.toLowerCase()
+        );
+
+        if (!validSuperSpeciality) {
+          throw new ApiError(
+            400,
+            `Invalid super speciality. "${superSpeciality}" is not a valid sub-speciality of "${currentSpeciality.speciality}".`
+          );
+        }
+      }
+    } else {
+      throw new ApiError(400, "Cannot set super speciality without a parent speciality.");
+    }
+  }
+
   if (superSpeciality) doctor.superSpeciality = superSpeciality;
   if (consultationTime) doctor.consultationTime = consultationTime;
   if (locations) doctor.locations = locations;
@@ -450,13 +492,62 @@ const getDoctors = async (req, res, next) => {
 
     // Find in Doctor collection
     const doctors = await Doctor.find(filter)
-      .populate('userId', 'whatsappnumber role') // Populate user details
+      .populate('userId', 'whatsappnumber role -_id') // Populate user details, exclude _id duplicate
+      .populate('speciality') // Populate full speciality details including super_specialities
       .sort({ createdAt: -1 });
+
+    // Transform the response to use proper field names
+    const transformedDoctors = doctors.map(doctor => {
+      const docObj = doctor.toObject();
+
+      // Extract services from the matching super-speciality
+      let services = [];
+      if (docObj.speciality && docObj.superSpeciality) {
+        const matchingSuperSpec = docObj.speciality.super_specialities?.find(
+          ss => ss.name.toLowerCase() === docObj.superSpeciality.toLowerCase()
+        );
+        services = matchingSuperSpec?.services || [];
+      }
+
+      return {
+        doctorId: docObj._id,
+        userId: docObj.userId?._id || docObj.userId,
+        whatsappnumber: docObj.userId?.whatsappnumber,
+        role: docObj.userId?.role,
+        name: docObj.name,
+        email: docObj.email,
+        emergencyContact: docObj.phone, // Renamed from phone
+        address: docObj.address,
+        speciality: docObj.speciality?.speciality || null,
+        specialityId: docObj.speciality?._id || null,
+        superSpeciality: docObj.superSpeciality,
+        services: services, // Services from the super-speciality
+        consultationTime: docObj.consultationTime,
+        locations: docObj.locations?.map(loc => ({
+          hospitalId: loc._id,
+          name: loc.name,
+          phone: loc.phone,
+          coordinates: loc.coordinates
+        })) || [],
+        availability: docObj.availability,
+        education: docObj.education,
+        isAvailable: docObj.isAvailable,
+        pmdcRegistrationNumber: docObj.pmdcRegistrationNumber,
+        status: docObj.status,
+        image: docObj.image,
+        experience: docObj.experience,
+        averageRating: docObj.averageRating,
+        numReviews: docObj.numReviews,
+        leaves: docObj.leaves,
+        completenessScore: docObj.completenessScore,
+        registrationDate: docObj.registrationDate,
+      };
+    });
 
     res.status(200).json({
       success: true,
-      count: doctors.length,
-      data: doctors,
+      count: transformedDoctors.length,
+      data: transformedDoctors,
     });
   } catch (error) {
     next(error);
