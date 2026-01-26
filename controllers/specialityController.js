@@ -30,10 +30,10 @@ const getSpecialities = asyncHandler(async (req, res) => {
         const specObj = spec.toObject();
 
         return {
-            specialityId: specObj._id,
-            name: specObj.speciality,
-            superSpecialities: specObj.super_specialities?.map(ss => ({
-                superSpecialityId: ss._id,
+            _id: specObj._id,
+            speciality: specObj.speciality,
+            super_specialities: specObj.super_specialities?.map(ss => ({
+                _id: ss._id,
                 name: ss.name,
                 services: ss.services
             })) || [],
