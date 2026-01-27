@@ -55,17 +55,24 @@ const getSpecialitySuggestions = asyncHandler(async (req, res) => {
     const suggestions = await SpecialitySuggestion.find({}).populate('suggestedBy', 'name');
     res.status(200).json(new ApiResponse(200, suggestions, "Suggestions fetched"));
 });
+const getSpecialityById = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const speciality = await Speciality.findById(id);
+
+    if (!speciality) {
+        throw new ApiError(404, "Speciality not found");
+    }
+
+    res.status(200).json(new ApiResponse(200, speciality, "Speciality fetched successfully"));
+});
 
 const approveSpecialitySuggestion = asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { status } = req.body; // 'approved' or 'rejected'
-
     const suggestion = await SpecialitySuggestion.findById(id);
     if (!suggestion) throw new ApiError(404, "Suggestion not found");
-
     suggestion.status = status;
     await suggestion.save();
-
     if (status === 'approved') {
         // Automatically create the speciality if it doesn't exist
         const existing = await Speciality.findOne({ speciality: suggestion.name });
@@ -81,5 +88,6 @@ module.exports = {
     seedSpecialities,
     getSpecialities,
     getSpecialitySuggestions,
-    approveSpecialitySuggestion
+    approveSpecialitySuggestion,
+    getSpecialityById,
 };

@@ -35,7 +35,8 @@ app.use(
       "http://localhost:5173",
       "https://mern-stack-auth-drab.vercel.app",
       "https://hostpital-managment.vercel.app",
-      "https://appbookingfrontend.onrender.com"
+      "https://appbookingfrontend.onrender.com",
+      "https://www.ashfaqhospitals.com",
     ],
     credentials: true,
   })
