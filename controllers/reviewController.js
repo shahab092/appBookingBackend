@@ -31,7 +31,9 @@ const createReview = asyncHandler(async (req, res) => {
 
 const getDoctorReviews = asyncHandler(async (req, res) => {
     const { doctorId } = req.params;
-    const reviews = await Review.find({ doctorId }).populate('patientId', 'name image');
+    const reviews = await Review.find({ doctorId })
+        .populate('patientId', 'name image')
+        .sort({ createdAt: -1 });
 
     res.status(200).json(
         new ApiResponse(200, reviews, "Reviews fetched successfully")

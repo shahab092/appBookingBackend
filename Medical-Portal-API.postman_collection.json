@@ -433,6 +433,67 @@
                     "response": []
                 }
             ]
+        },
+        {
+            "name": "Reviews",
+            "item": [
+                {
+                    "name": "Create Review",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"doctorId\": \"DOCTOR_ID_HERE\",\n    \"rating\": 5,\n    \"comment\": \"Excellent doctor!\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/reviews",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "reviews"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Doctor Reviews",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/reviews/DOCTOR_ID_HERE",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "reviews",
+                                "DOCTOR_ID_HERE"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
         }
     ],
     "event": [
