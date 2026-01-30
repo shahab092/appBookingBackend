@@ -54,6 +54,7 @@ app.use("/api/appointments", appointmentRoute);
 app.use("/api/notifications", notificationRoute);
 app.use("/api/specialities", require("./routes/specialityRoutes.js"));
 app.use("/api/reviews", require("./routes/reviewRoutes"));
+app.use("/api/payments", require("./routes/paymentRoutes"));
 
 // Test route
 app.get("/", (req, res) => {
