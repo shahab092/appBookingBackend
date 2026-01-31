@@ -1,0 +1,113 @@
+{
+    "info": {
+        "_postman_id": "a1b2c3d4-e5f6-4a5b-9c8d-7e6f5a4b3c2d",
+        "name": "Payment API",
+        "description": "API collection for Payment System",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Start Payment",
+            "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"appointmentId\": \"679203e8395ec1d3408f972b\",\n    \"paymentMethod\": \"PayFast\",\n    \"amount\": 500,\n    \"userId\": \"679203e8395ec1d3408f972a\"\n}",
+                    "options": {
+                        "raw": {
+                            "language": "json"
+                        }
+                    }
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/api/payments/start",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "api",
+                        "payments",
+                        "start"
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "Payment Callback (Simulate IPN)",
+            "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"appointmentId\": \"679203e8395ec1d3408f972b\",\n    \"paymentId\": \"PAYMENT_ID_HERE\",\n    \"transactionId\": \"TXN_99887766\",\n    \"status\": \"paid\"\n}",
+                    "options": {
+                        "raw": {
+                            "language": "json"
+                        }
+                    }
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/api/payments/callback",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "api",
+                        "payments",
+                        "callback"
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "Get Payment Status",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{baseUrl}}/api/payments/status/679203e8395ec1d3408f972b",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "api",
+                        "payments",
+                        "status",
+                        "679203e8395ec1d3408f972b"
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "Get Doctor Payments",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{baseUrl}}/api/payments/doctor/DOCTOR_ID_HERE",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "api",
+                        "payments",
+                        "doctor",
+                        "DOCTOR_ID_HERE"
+                    ]
+                }
+            },
+            "response": []
+        }
+    ],
+    "variable": [
+        {
+            "key": "baseUrl",
+            "value": "http://localhost:5000",
+            "type": "string"
+        }
+    ]
+}

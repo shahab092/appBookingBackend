@@ -409,7 +409,11 @@ const getAvailableSlots = asyncHandler(async (req, res) => {
   const dayName = days[new Date(date).getDay()];
 
   // Find availability for this day
-  const dayAvailability = doctor.availability.filter(a => a.day === dayName && (!locationId || a.locationId.toString() === locationId));
+  const dayAvailability = doctor.availability.filter(a =>
+    a.day === dayName &&
+    (!locationId || a.locationId?.toString() === locationId.toString()) &&
+    (!req.query.appointmentType || a.appointmentType === req.query.appointmentType)
+  );
 
   if (dayAvailability.length === 0) {
     return res.status(200).json(new ApiResponse(200, [], "No availability found for this day"));
@@ -417,7 +421,7 @@ const getAvailableSlots = asyncHandler(async (req, res) => {
 
   // Get already booked slots for this doctor on this date
   const bookedAppointments = await Appointment.find({
-    doctorId: doctor.userId,
+    doctorId: doctor._id, // FIXED: Use doctor profile ID
     date,
     status: 'booked',
     isDeleted: false
@@ -432,17 +436,20 @@ const getAvailableSlots = asyncHandler(async (req, res) => {
 
     let locationName = "N/A";
     let locationPhone = "N/A";
+    let locData = null;
+
     if (avail.appointmentType === 'inclinic' && avail.locationId) {
-      const location = doctor.locations.find(loc => loc._id.toString() === avail.locationId.toString());
-      if (location) {
-        locationName = location.name;
-        locationPhone = location.phone || "N/A";
+      locData = doctor.locations.find(loc => loc._id.toString() === avail.locationId.toString());
+      if (locData) {
+        locationName = locData.name;
+        locationPhone = locData.phone || "N/A";
       }
     }
 
     const sessionSlots = slots.map(time => ({
       time,
       appointmentType: avail.appointmentType,
+      locationId: avail.locationId,
       locationName: avail.appointmentType === 'online' ? "Online" : locationName,
       locationPhone: avail.appointmentType === 'online' ? "N/A" : locationPhone,
       isBooked: bookedSlots.includes(time)
@@ -451,13 +458,43 @@ const getAvailableSlots = asyncHandler(async (req, res) => {
     enrichedSlots = [...enrichedSlots, ...sessionSlots];
   }
 
-  // Filter out booked slots if you only want available ones, 
-  // or return all with isBooked status. 
-  // Given the previous logic returned "availableSlots", let's filter.
+  // Filter out booked slots
   const availableEnrichedSlots = enrichedSlots.filter(slot => !slot.isBooked);
 
   res.status(200).json(
     new ApiResponse(200, availableEnrichedSlots, "Available slots fetched successfully")
+  );
+});
+
+// Get Doctor's availability configuration (weekly schedule)
+const getDoctorAvailabilityConfig = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const doctor = await Doctor.findById(id).select('availability locations consultationTime');
+  if (!doctor) throw new ApiError(404, "Doctor not found");
+
+  const transformedAvailability = doctor.availability.map(avail => {
+    let locationName = "Online";
+    if (avail.appointmentType === 'inclinic' && avail.locationId) {
+      const loc = doctor.locations.find(l => l._id.toString() === avail.locationId.toString());
+      locationName = loc ? loc.name : "Unknown Location";
+    }
+
+    return {
+      day: avail.day,
+      startTime: avail.startTime,
+      endTime: avail.endTime,
+      appointmentType: avail.appointmentType,
+      locationId: avail.locationId,
+      locationName
+    };
+  });
+
+  res.status(200).json(
+    new ApiResponse(200, {
+      consultationTime: doctor.consultationTime,
+      availability: transformedAvailability
+    }, "Doctor availability config fetched successfully")
   );
 });
 
@@ -810,6 +847,7 @@ module.exports = {
   getCities,
   updateDoctorProfile,
   getAvailableSlots,
+  getDoctorAvailabilityConfig,
   addLeave,
   removeLeave,
   suggestSpeciality,

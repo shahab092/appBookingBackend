@@ -8,6 +8,7 @@ const {
     getCities,
     updateDoctorProfile,
     getAvailableSlots,
+    getDoctorAvailabilityConfig,
     addLeave,
     removeLeave,
     suggestSpeciality,
@@ -30,6 +31,9 @@ router.put('/update-profile', authenticate, updateDoctorProfile);
 
 // GET /api/doctors/available-slots - Get available slots for a doctor/date
 router.get('/available-slots', getAvailableSlots);
+
+// GET /api/doctors/:id/availability - Get doctor's weekly availability config
+router.get('/:id/availability', getDoctorAvailabilityConfig);
 
 // GET /api/doctor/cities - Get unique cities for lookup
 router.get('/cities', getCities);
