@@ -423,7 +423,7 @@ const getAvailableSlots = asyncHandler(async (req, res) => {
   const bookedAppointments = await Appointment.find({
     doctorId: doctor._id, // FIXED: Use doctor profile ID
     date,
-    status: 'booked',
+    status: 'confirmed', // ONLY EXCLUDE SLOTS IF PAYMENT IS CONFIRMED
     isDeleted: false
   });
 
