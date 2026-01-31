@@ -30,6 +30,13 @@ const bookAppointment = asyncHandler(async (req, res) => {
   if (!doctor) throw new ApiError(404, "Doctor not found");
   if (doctor.status !== 'approved') throw new ApiError(400, "Doctor is not currently available for booking");
 
+  // Prevent booking for past dates
+  const searchDate = new Date(date).setHours(0, 0, 0, 0);
+  const today = new Date().setHours(0, 0, 0, 0);
+  if (searchDate < today) {
+    throw new ApiError(400, "Cannot book appointments for past dates.");
+  }
+
   // 2. Validate session exists in doctor's availability
   const dayOfWeek = new Date(date).toLocaleDateString('en-US', { weekday: 'long' });
   const matchingSession = doctor.availability.find(s =>

@@ -389,71 +389,102 @@ const suggestSpeciality = asyncHandler(async (req, res) => {
 
 // Get Available Slots
 const getAvailableSlots = asyncHandler(async (req, res) => {
-  const { doctorId, date, locationId } = req.query; // date format: YYYY-MM-DD
+  const { doctorId, date, locationId, appointmentType } = req.query; // date format: YYYY-MM-DD
 
-  if (!doctorId || !date) throw new ApiError(400, "Doctor ID and date are required");
+  if (!doctorId || !date || !appointmentType) {
+    throw new ApiError(400, "Doctor ID, date, and appointmentType (online/inclinic) are required");
+  }
+
+  if (appointmentType === 'inclinic' && !locationId) {
+    throw new ApiError(400, "locationId is required for in-clinic appointments");
+  }
 
   const doctor = await Doctor.findById(doctorId);
   if (!doctor) throw new ApiError(404, "Doctor not found");
 
-  // Check if doctor is on leave
-  const searchDate = new Date(date).setHours(0, 0, 0, 0);
-  const isOnLeave = doctor.leaves.some(l => new Date(l).setHours(0, 0, 0, 0) === searchDate);
-
-  if (isOnLeave) {
-    return res.status(200).json(new ApiResponse(200, [], "Doctor is on leave for this date"));
+  // 1. Check if doctor is "away" or not "approved"
+  if (doctor.status === 'away') {
+    return res.status(200).json(new ApiResponse(200, [], `Dr. ${doctor.name} is currently away and not taking appointments.`));
+  }
+  if (doctor.status !== 'approved') {
+    return res.status(200).json(new ApiResponse(200, [], "This doctor's account is not yet active for bookings."));
   }
 
-  // Get day of week
+  // 2. Check if doctor is on leave
+  const searchDate = new Date(date).setHours(0, 0, 0, 0);
+  const today = new Date().setHours(0, 0, 0, 0);
+
+  if (searchDate < today) {
+    return res.status(400).json(new ApiResponse(400, [], "Cannot fetch slots for past dates."));
+  }
+
+  const isOnLeave = doctor.leaves.some(l => new Date(l).setHours(0, 0, 0, 0) === searchDate);
+  if (isOnLeave) {
+    return res.status(200).json(new ApiResponse(200, [], `Dr. ${doctor.name} is on leave for the selected date.`));
+  }
+
+  // 3. Get day of week
   const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const dayName = days[new Date(date).getDay()];
 
-  // Find availability for this day
+  // 4. Find availability for this day
   const dayAvailability = doctor.availability.filter(a =>
     a.day === dayName &&
-    (!locationId || a.locationId?.toString() === locationId.toString()) &&
-    (!req.query.appointmentType || a.appointmentType === req.query.appointmentType)
+    a.appointmentType === appointmentType &&
+    (!locationId || a.locationId?.toString() === locationId.toString())
   );
 
   if (dayAvailability.length === 0) {
-    return res.status(200).json(new ApiResponse(200, [], "No availability found for this day"));
+    const locNote = locationId ? "at this specific location" : "";
+    return res.status(200).json(new ApiResponse(200, [], `Doctor has no ${appointmentType} sessions scheduled for ${dayName} ${locNote}.`));
   }
 
-  // Get already booked slots for this doctor on this date
+  // 5. Get already booked slots
   const bookedAppointments = await Appointment.find({
-    doctorId: doctor._id, // FIXED: Use doctor profile ID
+    doctorId: doctor._id,
     date,
-    status: 'confirmed', // ONLY EXCLUDE SLOTS IF PAYMENT IS CONFIRMED
+    status: 'confirmed',
     isDeleted: false
   });
 
   const bookedSlots = bookedAppointments.map(a => a.timeSlot);
 
-  // Generate enriched slots
+  // 6. Generate enriched slots
   let enrichedSlots = [];
+  const now = new Date();
+  const isToday = searchDate === today;
+
   for (const avail of dayAvailability) {
     const slots = generateSlots(avail.startTime, avail.endTime, doctor.consultationTime || 15);
 
     let locationName = "N/A";
     let locationPhone = "N/A";
-    let locData = null;
 
     if (avail.appointmentType === 'inclinic' && avail.locationId) {
-      locData = doctor.locations.find(loc => loc._id.toString() === avail.locationId.toString());
+      const locData = doctor.locations.find(loc => loc._id.toString() === avail.locationId.toString());
       if (locData) {
         locationName = locData.name;
         locationPhone = locData.phone || "N/A";
       }
     }
 
-    const sessionSlots = slots.map(time => ({
-      time,
-      appointmentType: avail.appointmentType,
-      locationId: avail.locationId,
-      locationName: avail.appointmentType === 'online' ? "Online" : locationName,
-      locationPhone: avail.appointmentType === 'online' ? "N/A" : locationPhone,
-      isBooked: bookedSlots.includes(time)
-    }));
+    const sessionSlots = slots
+      .filter(time => {
+        // Filter out past slots if the date is today
+        if (!isToday) return true;
+        const [hours, minutes] = time.split(':').map(Number);
+        const slotTime = new Date();
+        slotTime.setHours(hours, minutes, 0, 0);
+        return slotTime > now;
+      })
+      .map(time => ({
+        time,
+        appointmentType: avail.appointmentType,
+        locationId: avail.locationId,
+        locationName: avail.appointmentType === 'online' ? "Online" : locationName,
+        locationPhone: avail.appointmentType === 'online' ? "N/A" : locationPhone,
+        isBooked: bookedSlots.includes(time)
+      }));
 
     enrichedSlots = [...enrichedSlots, ...sessionSlots];
   }
@@ -461,8 +492,41 @@ const getAvailableSlots = asyncHandler(async (req, res) => {
   // Filter out booked slots
   const availableEnrichedSlots = enrichedSlots.filter(slot => !slot.isBooked);
 
+  if (availableEnrichedSlots.length === 0) {
+    return res.status(200).json(new ApiResponse(200, [], "All time slots for this session are already booked. Please try another date or location."));
+  }
+
+  // Grouping logic
+  const groupedSlots = {
+    morning: [],
+    afternoon: [],
+    evening: []
+  };
+
+  const formatTo12Hour = (time24) => {
+    const [hours, minutes] = time24.split(':').map(Number);
+    const period = hours >= 12 ? 'pm' : 'am';
+    const hours12 = hours % 12 || 12;
+    return `${hours12.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} ${period}`;
+  };
+
+  availableEnrichedSlots.forEach(slot => {
+    const [hours] = slot.time.split(':').map(Number);
+    const formattedTime = formatTo12Hour(slot.time);
+
+    const slotData = { ...slot, time: formattedTime };
+
+    if (hours < 12) {
+      groupedSlots.morning.push(slotData);
+    } else if (hours >= 12 && hours < 17) {
+      groupedSlots.afternoon.push(slotData);
+    } else {
+      groupedSlots.evening.push(slotData);
+    }
+  });
+
   res.status(200).json(
-    new ApiResponse(200, availableEnrichedSlots, "Available slots fetched successfully")
+    new ApiResponse(200, groupedSlots, "Available slots fetched successfully")
   );
 });
 

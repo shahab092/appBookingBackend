@@ -50,7 +50,6 @@ app.use((req, res, next) => {
 
 app.use("/api/auth", authLimiter, require("./routes/users.js"));
 app.use("/api/doctor", doctorRoute);
-app.use("/api/doctors", doctorRoute);
 app.use("/api/appointments", appointmentRoute);
 app.use("/api/notifications", notificationRoute);
 app.use("/api/specialities", require("./routes/specialityRoutes.js"));
