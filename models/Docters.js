@@ -120,6 +120,33 @@ const doctorSchema = new mongoose.Schema({
         default: 0,
         min: 0,
         max: 100
+    },
+    about: {
+        type: String,
+        required: false
+    },
+    gender: {
+        type: String,
+        enum: ['Male', 'Female', 'Other'],
+        required: false
+    },
+    languages: {
+        type: [String],
+        default: []
+    },
+    awards: [
+        {
+            name: { type: String },
+            year: { type: String }
+        }
+    ],
+    memberships: {
+        type: [String],
+        default: []
+    },
+    fees: {
+        online: { type: Number, default: 0 },
+        inclinic: { type: Number, default: 0 }
     }
 });
 

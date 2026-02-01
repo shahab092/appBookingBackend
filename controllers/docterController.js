@@ -22,7 +22,11 @@ const calculateCompleteness = (doctor) => {
     education: 15,
     image: 10,
     experience: 10,
-    pmdcRegistrationNumber: 5
+    pmdcRegistrationNumber: 5,
+    about: 5,
+    gender: 2,
+    languages: 2,
+    fees: 1
   };
 
   let score = 0;
@@ -36,8 +40,12 @@ const calculateCompleteness = (doctor) => {
   if (doctor.image) score += weights.image;
   if (doctor.experience > 0) score += weights.experience;
   if (doctor.pmdcRegistrationNumber) score += weights.pmdcRegistrationNumber;
+  if (doctor.about) score += weights.about;
+  if (doctor.gender) score += weights.gender;
+  if (doctor.languages?.length > 0) score += weights.languages;
+  if (doctor.fees?.online > 0 || doctor.fees?.inclinic > 0) score += weights.fees;
 
-  return score;
+  return Math.min(score, 100);
 };
 
 // Helper to check for overlapping time sessions
@@ -192,7 +200,13 @@ const updateDoctorProfile = asyncHandler(async (req, res) => {
     locations,
     availability,
     education,
-    address
+    address,
+    about,
+    gender,
+    languages,
+    awards,
+    memberships,
+    fees
   } = req.body;
 
   let doctor;
@@ -286,13 +300,17 @@ const updateDoctorProfile = asyncHandler(async (req, res) => {
     // 2. Validate and Link locationId for inclinic slots
     for (const session of availability) {
       if (session.appointmentType === 'inclinic') {
-        // If locationId is missing, try to find by Name in the doctor's locations
-        if (!session.locationId && session.locationName) {
-          const matchedLocation = doctor.locations.find(
-            loc => loc.name.toLowerCase() === session.locationName.toLowerCase()
-          );
-          if (matchedLocation) {
-            session.locationId = matchedLocation._id;
+        if (!session.locationId) {
+          if (session.locationName) {
+            const matchedLocation = doctor.locations.find(
+              loc => loc.name && loc.name.toLowerCase() === session.locationName.toLowerCase()
+            );
+            if (matchedLocation) {
+              session.locationId = matchedLocation._id;
+            }
+          } else if (doctor.locations.length === 1) {
+            // Fallback: If both are missing and doctor has only one location, default to it
+            session.locationId = doctor.locations[0]._id;
           }
         }
 
@@ -312,6 +330,12 @@ const updateDoctorProfile = asyncHandler(async (req, res) => {
   if (education) doctor.education = education;
   if (req.body.image) doctor.image = req.body.image;
   if (req.body.experience) doctor.experience = req.body.experience;
+  if (about !== undefined) doctor.about = about;
+  if (gender) doctor.gender = gender;
+  if (languages) doctor.languages = languages;
+  if (awards) doctor.awards = awards;
+  if (memberships) doctor.memberships = memberships;
+  if (fees) doctor.fees = fees;
 
   // Update completeness score
   doctor.completenessScore = calculateCompleteness(doctor);
@@ -428,11 +452,29 @@ const getAvailableSlots = asyncHandler(async (req, res) => {
   const dayName = days[new Date(date).getDay()];
 
   // 4. Find availability for this day
-  const dayAvailability = doctor.availability.filter(a =>
-    a.day === dayName &&
-    a.appointmentType === appointmentType &&
-    (!locationId || a.locationId?.toString() === locationId.toString())
-  );
+  const dayAvailability = doctor.availability.filter(a => {
+    if (a.day !== dayName || a.appointmentType !== appointmentType) return false;
+
+    // If locationId is specified in query, we must match it
+    if (locationId) {
+      let sessionLocationId = a.locationId;
+
+      // Resolve from name if ID is missing
+      if (!sessionLocationId && a.locationName) {
+        const matchedLoc = doctor.locations.find(loc => loc.name && loc.name.toLowerCase() === a.locationName.toLowerCase());
+        if (matchedLoc) sessionLocationId = matchedLoc._id;
+      }
+
+      // Fallback: If both ID and Name are missing, and doctor has only one location, assume it's this one
+      if (!sessionLocationId && !a.locationName && doctor.locations.length === 1) {
+        sessionLocationId = doctor.locations[0]._id;
+      }
+
+      return sessionLocationId?.toString() === locationId.toString();
+    }
+
+    return true; // No specific location requested
+  });
 
   if (dayAvailability.length === 0) {
     const locNote = locationId ? "at this specific location" : "";
@@ -477,14 +519,34 @@ const getAvailableSlots = asyncHandler(async (req, res) => {
         slotTime.setHours(hours, minutes, 0, 0);
         return slotTime > now;
       })
-      .map(time => ({
-        time,
-        appointmentType: avail.appointmentType,
-        locationId: avail.locationId,
-        locationName: avail.appointmentType === 'online' ? "Online" : locationName,
-        locationPhone: avail.appointmentType === 'online' ? "N/A" : locationPhone,
-        isBooked: bookedSlots.includes(time)
-      }));
+      .map(time => {
+        // Resolve locationId if it's missing but we're in-clinic
+        let resolvedLocationId = avail.locationId;
+        if (avail.appointmentType === 'inclinic' && !resolvedLocationId) {
+          if (avail.locationName) {
+            const locData = doctor.locations.find(loc => loc.name && loc.name.toLowerCase() === avail.locationName.toLowerCase());
+            if (locData) resolvedLocationId = locData._id;
+          }
+
+          // Fallback: Default to the first location if it's the only one
+          if (!resolvedLocationId && doctor.locations.length === 1) {
+            resolvedLocationId = doctor.locations[0]._id;
+          }
+        }
+
+        const currentLocData = resolvedLocationId ? doctor.locations.find(loc => loc._id.toString() === resolvedLocationId.toString()) : null;
+        const currentLocName = currentLocData ? currentLocData.name : (avail.appointmentType === 'online' ? "Online" : (avail.locationName || "N/A"));
+        const currentLocPhone = currentLocData ? (currentLocData.phone || "N/A") : "N/A";
+
+        return {
+          time,
+          appointmentType: avail.appointmentType,
+          locationId: resolvedLocationId,
+          locationName: currentLocName,
+          locationPhone: currentLocPhone,
+          isBooked: bookedSlots.includes(time)
+        };
+      });
 
     enrichedSlots = [...enrichedSlots, ...sessionSlots];
   }
@@ -538,10 +600,28 @@ const getDoctorAvailabilityConfig = asyncHandler(async (req, res) => {
   if (!doctor) throw new ApiError(404, "Doctor not found");
 
   const transformedAvailability = doctor.availability.map(avail => {
-    let locationName = "Online";
-    if (avail.appointmentType === 'inclinic' && avail.locationId) {
-      const loc = doctor.locations.find(l => l._id.toString() === avail.locationId.toString());
-      locationName = loc ? loc.name : "Unknown Location";
+    let locationName = avail.appointmentType === 'online' ? "Online" : (avail.locationName || "Unknown Location");
+    let resolvedLocationId = avail.locationId;
+
+    if (avail.appointmentType === 'inclinic') {
+      if (avail.locationId) {
+        const loc = doctor.locations.find(l => l._id.toString() === avail.locationId.toString());
+        if (loc) locationName = loc.name;
+      } else {
+        // Try resolving resolve from Name
+        if (avail.locationName) {
+          const loc = doctor.locations.find(l => l.name && l.name.toLowerCase() === avail.locationName.toLowerCase());
+          if (loc) {
+            resolvedLocationId = loc._id;
+            locationName = loc.name;
+          }
+        }
+        // Fallback: If only one location exists
+        if (!resolvedLocationId && doctor.locations.length === 1) {
+          resolvedLocationId = doctor.locations[0]._id;
+          locationName = doctor.locations[0].name;
+        }
+      }
     }
 
     return {
@@ -549,7 +629,7 @@ const getDoctorAvailabilityConfig = asyncHandler(async (req, res) => {
       startTime: avail.startTime,
       endTime: avail.endTime,
       appointmentType: avail.appointmentType,
-      locationId: avail.locationId,
+      locationId: resolvedLocationId,
       locationName
     };
   });
@@ -610,13 +690,25 @@ const getDoctors = async (req, res, next) => {
           phone: loc.phone,
           coordinates: loc.coordinates
         })) || [],
-        availability: docObj.availability?.map(avail => ({
-          day: avail.day,
-          startTime: avail.startTime,
-          endTime: avail.endTime,
-          appointmentType: avail.appointmentType,
-          locationId: avail.locationId
-        })) || [],
+        availability: docObj.availability?.map(avail => {
+          let resolvedLocationId = avail.locationId;
+          if (avail.appointmentType === 'inclinic' && !resolvedLocationId) {
+            if (avail.locationName) {
+              const loc = docObj.locations.find(l => l.name && l.name.toLowerCase() === avail.locationName.toLowerCase());
+              if (loc) resolvedLocationId = loc._id;
+            }
+            if (!resolvedLocationId && docObj.locations.length === 1) {
+              resolvedLocationId = docObj.locations[0]._id;
+            }
+          }
+          return {
+            day: avail.day,
+            startTime: avail.startTime,
+            endTime: avail.endTime,
+            appointmentType: avail.appointmentType,
+            locationId: resolvedLocationId
+          };
+        }) || [],
         education: docObj.education?.map(edu => ({
           degree: edu.degree,
           institute: edu.institute,
@@ -633,6 +725,12 @@ const getDoctors = async (req, res, next) => {
         leaves: docObj.leaves,
         completenessScore: docObj.completenessScore,
         registrationDate: docObj.registrationDate,
+        about: docObj.about,
+        gender: docObj.gender,
+        languages: docObj.languages,
+        awards: docObj.awards,
+        memberships: docObj.memberships,
+        fees: docObj.fees,
       };
     });
 
@@ -689,13 +787,25 @@ const getDoctorById = asyncHandler(async (req, res) => {
       phone: loc.phone,
       coordinates: loc.coordinates
     })) || [],
-    availability: docObj.availability?.map(avail => ({
-      day: avail.day,
-      startTime: avail.startTime,
-      endTime: avail.endTime,
-      appointmentType: avail.appointmentType,
-      locationId: avail.locationId
-    })) || [],
+    availability: docObj.availability?.map(avail => {
+      let resolvedLocationId = avail.locationId;
+      if (avail.appointmentType === 'inclinic' && !resolvedLocationId) {
+        if (avail.locationName) {
+          const loc = docObj.locations.find(l => l.name && l.name.toLowerCase() === avail.locationName.toLowerCase());
+          if (loc) resolvedLocationId = loc._id;
+        }
+        if (!resolvedLocationId && docObj.locations.length === 1) {
+          resolvedLocationId = docObj.locations[0]._id;
+        }
+      }
+      return {
+        day: avail.day,
+        startTime: avail.startTime,
+        endTime: avail.endTime,
+        appointmentType: avail.appointmentType,
+        locationId: resolvedLocationId
+      };
+    }) || [],
     education: docObj.education?.map(edu => ({
       degree: edu.degree,
       institute: edu.institute,
@@ -712,6 +822,12 @@ const getDoctorById = asyncHandler(async (req, res) => {
     leaves: docObj.leaves,
     completenessScore: docObj.completenessScore,
     registrationDate: docObj.registrationDate,
+    about: docObj.about,
+    gender: docObj.gender,
+    languages: docObj.languages,
+    awards: docObj.awards,
+    memberships: docObj.memberships,
+    fees: docObj.fees,
   };
 
   res.status(200).json(new ApiResponse(200, transformedDoctor, "Doctor details fetched successfully"));
@@ -780,13 +896,25 @@ const searchDoctors = asyncHandler(async (req, res) => {
         phone: loc.phone,
         coordinates: loc.coordinates
       })) || [],
-      availability: docObj.availability?.map(avail => ({
-        day: avail.day,
-        startTime: avail.startTime,
-        endTime: avail.endTime,
-        appointmentType: avail.appointmentType,
-        locationId: avail.locationId
-      })) || [],
+      availability: docObj.availability?.map(avail => {
+        let resolvedLocationId = avail.locationId;
+        if (avail.appointmentType === 'inclinic' && !resolvedLocationId) {
+          if (avail.locationName) {
+            const loc = docObj.locations.find(l => l.name && l.name.toLowerCase() === avail.locationName.toLowerCase());
+            if (loc) resolvedLocationId = loc._id;
+          }
+          if (!resolvedLocationId && docObj.locations.length === 1) {
+            resolvedLocationId = docObj.locations[0]._id;
+          }
+        }
+        return {
+          day: avail.day,
+          startTime: avail.startTime,
+          endTime: avail.endTime,
+          appointmentType: avail.appointmentType,
+          locationId: resolvedLocationId
+        };
+      }) || [],
       education: docObj.education?.map(edu => ({
         degree: edu.degree,
         institute: edu.institute,
@@ -854,9 +982,29 @@ const createDoctorByAdmin = asyncHandler(async (req, res) => {
   const newDoctor = await Doctor.create({
     userId: newUser._id, name, email, phone: emergencyContact || whatsappnumber, address, pmdcRegistrationNumber,
     speciality: specialityId, superSpeciality, consultationTime: consultationTime || 15,
-    locations: locations || [], availability: availability || [], education: education || [],
+    locations: locations || [], availability: [], education: education || [],
     experience: experience || 0, image, status: status || 'approved'
   });
+
+  // Now process availability with resolved IDs
+  if (availability && availability.length > 0) {
+    const processedAvailability = availability.map(avail => {
+      let resolvedLocationId = avail.locationId;
+      if (avail.appointmentType === 'inclinic' && !resolvedLocationId) {
+        if (avail.locationName) {
+          const matchedLoc = newDoctor.locations.find(loc => loc.name && loc.name.toLowerCase() === avail.locationName.toLowerCase());
+          if (matchedLoc) resolvedLocationId = matchedLoc._id;
+        }
+        // Fallback: default to single location
+        if (!resolvedLocationId && newDoctor.locations.length === 1) {
+          resolvedLocationId = newDoctor.locations[0]._id;
+        }
+      }
+      return { ...avail, locationId: resolvedLocationId };
+    });
+    newDoctor.availability = processedAvailability;
+    await newDoctor.save();
+  }
 
   res.status(201).json(new ApiResponse(201, { userId: newUser._id, doctorId: newDoctor._id, name: newDoctor.name, email: newDoctor.email, status: newDoctor.status }, "Doctor account created successfully"));
 });
@@ -890,9 +1038,29 @@ const bulkCreateDoctors = asyncHandler(async (req, res) => {
       const newDoctor = await Doctor.create({
         userId: newUser._id, name, email, phone: emergencyContact || whatsappnumber, address, pmdcRegistrationNumber,
         speciality: specialityId, superSpeciality, consultationTime: consultationTime || 15,
-        locations: locations || [], availability: availability || [], education: education || [],
+        locations: locations || [], availability: [], education: education || [],
         experience: experience || 0, image, status: status || 'approved'
       });
+
+      // Process availability to link location IDs
+      if (availability && availability.length > 0) {
+        const processedAvailability = availability.map(avail => {
+          let resolvedLocationId = avail.locationId;
+          if (avail.appointmentType === 'inclinic' && !resolvedLocationId) {
+            if (avail.locationName) {
+              const matchedLoc = newDoctor.locations.find(loc => loc.name && loc.name.toLowerCase() === avail.locationName.toLowerCase());
+              if (matchedLoc) resolvedLocationId = matchedLoc._id;
+            }
+            // Fallback: default to single location
+            if (!resolvedLocationId && newDoctor.locations.length === 1) {
+              resolvedLocationId = newDoctor.locations[0]._id;
+            }
+          }
+          return { ...avail, locationId: resolvedLocationId };
+        });
+        newDoctor.availability = processedAvailability;
+        await newDoctor.save();
+      }
 
       results.success.push({ index: i, userId: newUser._id, doctorId: newDoctor._id, name: newDoctor.name, email: newDoctor.email });
     } catch (error) {
