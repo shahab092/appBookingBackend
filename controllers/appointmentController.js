@@ -4,6 +4,7 @@ const User = require("../models/User");
 const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
+const { convertTo24Hour } = require("../utils/slotUtils");
 
 // @desc    Book a new appointment
 // @route   POST /api/appointments
@@ -50,11 +51,14 @@ const bookAppointment = asyncHandler(async (req, res) => {
   }
 
   // 3. Prevent double booking for the same doctor, date, and slot
+  // Standardize the timeSlot to 24h format for both query and storage
+  const timeSlot24h = convertTo24Hour(timeSlot);
+
   const existingAppointment = await Appointment.findOne({
     doctorId,
     date,
-    timeSlot,
-    status: 'booked'
+    timeSlot: timeSlot24h,
+    status: { $in: ['booked', 'confirmed'] } // Also check for confirmed status
   });
 
   if (existingAppointment) {
@@ -65,7 +69,7 @@ const bookAppointment = asyncHandler(async (req, res) => {
   const appointmentData = {
     doctorId,
     date,
-    timeSlot,
+    timeSlot: timeSlot24h,
     appointmentType,
     locationName: matchingSession.locationName,
     reason,

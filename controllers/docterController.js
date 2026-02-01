@@ -2,7 +2,7 @@ const Doctor = require('../models/Docters');
 const User = require('../models/User');
 const Appointment = require('../models/Appointment');
 const Speciality = require('../models/Speciality');
-const { generateSlots } = require('../utils/slotUtils');
+const { generateSlots, convertTo24Hour } = require('../utils/slotUtils');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const bcrypt = require('bcrypt');
@@ -413,184 +413,156 @@ const suggestSpeciality = asyncHandler(async (req, res) => {
 
 // Get Available Slots
 const getAvailableSlots = asyncHandler(async (req, res) => {
-  const { doctorId, date, locationId, appointmentType } = req.query; // date format: YYYY-MM-DD
+  const { doctorId, date, locationId, appointmentType } = req.query;
 
   if (!doctorId || !date || !appointmentType) {
-    throw new ApiError(400, "Doctor ID, date, and appointmentType (online/inclinic) are required");
+    throw new ApiError(400, "doctorId, date, appointmentType are required");
   }
 
   if (appointmentType === 'inclinic' && !locationId) {
     throw new ApiError(400, "locationId is required for in-clinic appointments");
   }
 
-  const doctor = await Doctor.findById(doctorId);
+  // -------------------------------
+  // 1. Fetch doctor (lean = faster)
+  // -------------------------------
+  const doctor = await Doctor.findById(doctorId)
+    .select('name status availability locations consultationTime leaves')
+    .lean();
+
   if (!doctor) throw new ApiError(404, "Doctor not found");
 
-  // 1. Check if doctor is "away" or not "approved"
-  if (doctor.status === 'away') {
-    return res.status(200).json(new ApiResponse(200, [], `Dr. ${doctor.name} is currently away and not taking appointments.`));
-  }
   if (doctor.status !== 'approved') {
-    return res.status(200).json(new ApiResponse(200, [], "This doctor's account is not yet active for bookings."));
+    return res.json(new ApiResponse(200, [], "Doctor is not available for booking"));
   }
 
-  // 2. Check if doctor is on leave
-  const searchDate = new Date(date).setHours(0, 0, 0, 0);
-  const today = new Date().setHours(0, 0, 0, 0);
+  // -------------------------------
+  // 2. Date validations
+  // -------------------------------
+  const searchDate = new Date(date);
+  searchDate.setHours(0, 0, 0, 0);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
   if (searchDate < today) {
-    return res.status(400).json(new ApiResponse(400, [], "Cannot fetch slots for past dates."));
+    throw new ApiError(400, "Cannot fetch slots for past dates");
   }
 
-  const isOnLeave = doctor.leaves.some(l => new Date(l).setHours(0, 0, 0, 0) === searchDate);
-  if (isOnLeave) {
-    return res.status(200).json(new ApiResponse(200, [], `Dr. ${doctor.name} is on leave for the selected date.`));
+  if (doctor.leaves?.some(d => new Date(d).setHours(0, 0, 0, 0) === searchDate.getTime())) {
+    return res.json(new ApiResponse(200, [], "Doctor is on leave"));
   }
 
-  // 3. Get day of week
-  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const dayName = days[new Date(date).getDay()];
+  // -------------------------------
+  // 3. Day availability
+  // -------------------------------
+  const dayName = new Date(date).toLocaleDateString('en-US', { weekday: 'long' });
 
-  // 4. Find availability for this day
-  const dayAvailability = doctor.availability.filter(a => {
-    if (a.day !== dayName || a.appointmentType !== appointmentType) return false;
+  const dayAvailability = doctor.availability.filter(a =>
+    a.day === dayName &&
+    a.appointmentType === appointmentType &&
+    (appointmentType === 'online' || a.locationId?.toString() === locationId)
+  );
 
-    // If locationId is specified in query, we must match it
-    if (locationId) {
-      let sessionLocationId = a.locationId;
-
-      // Resolve from name if ID is missing
-      if (!sessionLocationId && a.locationName) {
-        const matchedLoc = doctor.locations.find(loc => loc.name && loc.name.toLowerCase() === a.locationName.toLowerCase());
-        if (matchedLoc) sessionLocationId = matchedLoc._id;
-      }
-
-      // Fallback: If both ID and Name are missing, and doctor has only one location, assume it's this one
-      if (!sessionLocationId && !a.locationName && doctor.locations.length === 1) {
-        sessionLocationId = doctor.locations[0]._id;
-      }
-
-      return sessionLocationId?.toString() === locationId.toString();
-    }
-
-    return true; // No specific location requested
-  });
-
-  if (dayAvailability.length === 0) {
-    const locNote = locationId ? "at this specific location" : "";
-    return res.status(200).json(new ApiResponse(200, [], `Doctor has no ${appointmentType} sessions scheduled for ${dayName} ${locNote}.`));
+  if (!dayAvailability.length) {
+    return res.json(new ApiResponse(200, [], "No availability for this day"));
   }
 
-  // 5. Get already booked slots
-  const bookedAppointments = await Appointment.find({
-    doctorId: doctor._id,
+  // -------------------------------
+  // 4. Fetch booked slots (SCOPED)
+  // -------------------------------
+  const appointmentFilter = {
+    doctorId,
     date,
-    status: 'confirmed',
+    appointmentType,
+    status: { $in: ['booked', 'confirmed'] },
     isDeleted: false
+  };
+
+  if (appointmentType === 'inclinic') {
+    appointmentFilter.locationId = locationId;
+  }
+
+  const bookedAppointments = await Appointment.find(appointmentFilter)
+    .select('timeSlot -_id')
+    .lean();
+
+  const bookedSlotSet = new Set(
+    bookedAppointments.map(a => convertTo24Hour(a.timeSlot))
+  );
+
+  // -------------------------------
+  // 5. Pre-resolve locations map
+  // -------------------------------
+  const locationMap = {};
+  doctor.locations?.forEach(loc => {
+    locationMap[loc._id.toString()] = loc;
   });
 
-  const bookedSlots = bookedAppointments.map(a => a.timeSlot);
-
-  // 6. Generate enriched slots
-  let enrichedSlots = [];
+  // -------------------------------
+  // 6. Generate slots
+  // -------------------------------
   const now = new Date();
-  const isToday = searchDate === today;
+  const isToday = searchDate.getTime() === today.getTime();
+  const consultationTime = doctor.consultationTime || 15;
+
+  let slots = [];
 
   for (const avail of dayAvailability) {
-    const slots = generateSlots(avail.startTime, avail.endTime, doctor.consultationTime || 15);
+    const generatedSlots = generateSlots(
+      avail.startTime,
+      avail.endTime,
+      consultationTime
+    );
 
-    let locationName = "N/A";
-    let locationPhone = "N/A";
-
-    if (avail.appointmentType === 'inclinic' && avail.locationId) {
-      const locData = doctor.locations.find(loc => loc._id.toString() === avail.locationId.toString());
-      if (locData) {
-        locationName = locData.name;
-        locationPhone = locData.phone || "N/A";
-      }
-    }
-
-    const sessionSlots = slots
-      .filter(time => {
-        // Filter out past slots if the date is today
-        if (!isToday) return true;
-        const [hours, minutes] = time.split(':').map(Number);
+    for (const time of generatedSlots) {
+      if (isToday) {
+        const [h, m] = time.split(':').map(Number);
         const slotTime = new Date();
-        slotTime.setHours(hours, minutes, 0, 0);
-        return slotTime > now;
-      })
-      .map(time => {
-        // Resolve locationId if it's missing but we're in-clinic
-        let resolvedLocationId = avail.locationId;
-        if (avail.appointmentType === 'inclinic' && !resolvedLocationId) {
-          if (avail.locationName) {
-            const locData = doctor.locations.find(loc => loc.name && loc.name.toLowerCase() === avail.locationName.toLowerCase());
-            if (locData) resolvedLocationId = locData._id;
-          }
+        slotTime.setHours(h, m, 0, 0);
+        if (slotTime <= now) continue;
+      }
 
-          // Fallback: Default to the first location if it's the only one
-          if (!resolvedLocationId && doctor.locations.length === 1) {
-            resolvedLocationId = doctor.locations[0]._id;
-          }
-        }
+      if (bookedSlotSet.has(time)) continue;
 
-        const currentLocData = resolvedLocationId ? doctor.locations.find(loc => loc._id.toString() === resolvedLocationId.toString()) : null;
-        const currentLocName = currentLocData ? currentLocData.name : (avail.appointmentType === 'online' ? "Online" : (avail.locationName || "N/A"));
-        const currentLocPhone = currentLocData ? (currentLocData.phone || "N/A") : "N/A";
+      const loc = appointmentType === 'inclinic'
+        ? locationMap[avail.locationId?.toString()]
+        : null;
 
-        return {
-          time,
-          appointmentType: avail.appointmentType,
-          locationId: resolvedLocationId,
-          locationName: currentLocName,
-          locationPhone: currentLocPhone,
-          isBooked: bookedSlots.includes(time)
-        };
+      slots.push({
+        time,
+        appointmentType,
+        locationId: loc?._id || null,
+        locationName: loc?.name || "Online",
+        locationPhone: loc?.phone || "N/A"
       });
-
-    enrichedSlots = [...enrichedSlots, ...sessionSlots];
-  }
-
-  // Filter out booked slots
-  const availableEnrichedSlots = enrichedSlots.filter(slot => !slot.isBooked);
-
-  if (availableEnrichedSlots.length === 0) {
-    return res.status(200).json(new ApiResponse(200, [], "All time slots for this session are already booked. Please try another date or location."));
-  }
-
-  // Grouping logic
-  const groupedSlots = {
-    morning: [],
-    afternoon: [],
-    evening: []
-  };
-
-  const formatTo12Hour = (time24) => {
-    const [hours, minutes] = time24.split(':').map(Number);
-    const period = hours >= 12 ? 'pm' : 'am';
-    const hours12 = hours % 12 || 12;
-    return `${hours12.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} ${period}`;
-  };
-
-  availableEnrichedSlots.forEach(slot => {
-    const [hours] = slot.time.split(':').map(Number);
-    const formattedTime = formatTo12Hour(slot.time);
-
-    const slotData = { ...slot, time: formattedTime };
-
-    if (hours < 12) {
-      groupedSlots.morning.push(slotData);
-    } else if (hours >= 12 && hours < 17) {
-      groupedSlots.afternoon.push(slotData);
-    } else {
-      groupedSlots.evening.push(slotData);
     }
-  });
+  }
 
-  res.status(200).json(
-    new ApiResponse(200, groupedSlots, "Available slots fetched successfully")
+  if (!slots.length) {
+    return res.json(new ApiResponse(200, [], "No available slots"));
+  }
+
+  // -------------------------------
+  // 7. Group slots
+  // -------------------------------
+  const grouped = { morning: [], afternoon: [], evening: [] };
+
+  for (const slot of slots) {
+    const [h, m] = slot.time.split(':').map(Number);
+    const period = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
+
+    const hours12 = h % 12 || 12;
+    const formattedTime = `${hours12}:${m.toString().padStart(2, '0')} ${h >= 12 ? 'pm' : 'am'}`;
+
+    grouped[period].push({ ...slot, time: formattedTime });
+  }
+
+  return res.json(
+    new ApiResponse(200, grouped, "Available slots fetched successfully")
   );
 });
+
 
 // Get Doctor's availability configuration (weekly schedule)
 const getDoctorAvailabilityConfig = asyncHandler(async (req, res) => {
