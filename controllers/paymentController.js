@@ -18,21 +18,26 @@ exports.startPayment = async (req, res) => {
             return res.status(404).json({ message: "Appointment not found" });
         }
 
+        // Generate a unique transaction ID (placeholder for gateway integration)
+        const transactionId = `TXN-${Date.now()}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+
         // Create payment record
         const payment = await Payment.create({
             appointmentId,
             userId,
             paymentMethod,
             amount,
+            transactionId,
             status: "pending"
         });
 
         // Dummy PayFast redirect URL
-        const redirectUrl = `https://dummy-payfast.com/pay?paymentId=${payment._id}`;
+        const redirectUrl = `https://dummy-payfast.com/pay?paymentId=${payment._id}&txnId=${transactionId}`;
 
         res.status(201).json({
             success: true,
             paymentId: payment._id,
+            transactionId,
             redirectUrl
         });
     } catch (error) {
