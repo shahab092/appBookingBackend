@@ -13,6 +13,12 @@ const ApiResponse = require("../utils/ApiResponse");
 const SpecialitySuggestion = require('../models/SpecialitySuggestion');
 require('dotenv').config();
 
+// Validation Regex
+const TIME_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/; // HH:mm (24h)
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_REGEX = /^\+?\d{10,15}$/;
+const VALID_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
 // Helper to calculate completeness score
 const calculateCompleteness = (doctor) => {
   const weights = {
@@ -240,8 +246,14 @@ const updateDoctorProfile = asyncHandler(async (req, res) => {
 
   // Update basic fields if provided
   if (name) doctor.name = name;
-  if (email) doctor.email = email;
-  if (emergencyContact) doctor.phone = emergencyContact;
+  if (email) {
+    if (!EMAIL_REGEX.test(email)) throw new ApiError(400, "Invalid email format");
+    doctor.email = email;
+  }
+  if (emergencyContact) {
+    if (!PHONE_REGEX.test(emergencyContact)) throw new ApiError(400, "Invalid phone number format. Use numeric digits (10-15 characters).");
+    doctor.phone = emergencyContact;
+  }
   if (pmdcRegistrationNumber) doctor.pmdcRegistrationNumber = pmdcRegistrationNumber;
   if (address) doctor.address = address;
 
@@ -254,14 +266,16 @@ const updateDoctorProfile = asyncHandler(async (req, res) => {
 
     // If superSpeciality is also provided, validate it belongs to this speciality
     if (superSpeciality) {
+      const trimmedSuperSpec = superSpeciality.trim();
       const validSuperSpeciality = specialityExists.super_specialities.find(
-        ss => ss.name.toLowerCase() === superSpeciality.toLowerCase()
+        ss => ss.name.trim().toLowerCase() === trimmedSuperSpec.toLowerCase()
       );
 
       if (!validSuperSpeciality) {
+        const validOptions = specialityExists.super_specialities.map(ss => ss.name).join(", ");
         throw new ApiError(
           400,
-          `Invalid super speciality. "${superSpeciality}" is not a valid sub-speciality of "${specialityExists.speciality}".`
+          `Invalid super speciality. "${trimmedSuperSpec}" is not valid for "${specialityExists.speciality}". Available: ${validOptions}`
         );
       }
     }
@@ -272,14 +286,16 @@ const updateDoctorProfile = asyncHandler(async (req, res) => {
     if (doctor.speciality) {
       const currentSpeciality = await Speciality.findById(doctor.speciality);
       if (currentSpeciality) {
+        const trimmedSuperSpec = superSpeciality.trim();
         const validSuperSpeciality = currentSpeciality.super_specialities.find(
-          ss => ss.name.toLowerCase() === superSpeciality.toLowerCase()
+          ss => ss.name.trim().toLowerCase() === trimmedSuperSpec.toLowerCase()
         );
 
         if (!validSuperSpeciality) {
+          const validOptions = currentSpeciality.super_specialities.map(ss => ss.name).join(", ");
           throw new ApiError(
             400,
-            `Invalid super speciality. "${superSpeciality}" is not a valid sub-speciality of "${currentSpeciality.speciality}".`
+            `Invalid super speciality. "${trimmedSuperSpec}" is not valid for "${currentSpeciality.speciality}". Available: ${validOptions}`
           );
         }
       }
@@ -299,6 +315,26 @@ const updateDoctorProfile = asyncHandler(async (req, res) => {
 
     // 2. Validate and Link locationId for inclinic slots
     for (const session of availability) {
+      // Validate Day
+      if (!VALID_DAYS.includes(session.day)) {
+        throw new ApiError(400, `Invalid day: ${session.day}. Must be one of: ${VALID_DAYS.join(', ')}`);
+      }
+
+      // Validate Time Format (HH:mm)
+      if (!TIME_REGEX.test(session.startTime) || !TIME_REGEX.test(session.endTime)) {
+        throw new ApiError(400, `Invalid time format for ${session.day}. Expected HH:mm (24h), e.g., "09:00" or "14:30". Got: "${session.startTime}" - "${session.endTime}"`);
+      }
+
+      // Validate Start < End
+      const [startH, startM] = session.startTime.split(':').map(Number);
+      const [endH, endM] = session.endTime.split(':').map(Number);
+      const startTotal = startH * 60 + startM;
+      const endTotal = endH * 60 + endM;
+
+      if (startTotal >= endTotal) {
+        throw new ApiError(400, `Invalid session on ${session.day}: Start time (${session.startTime}) must be strictly before end time (${session.endTime}).`);
+      }
+
       if (session.appointmentType === 'inclinic') {
         if (!session.locationId) {
           if (session.locationName) {
@@ -637,7 +673,7 @@ const getDoctors = async (req, res, next) => {
       let services = [];
       if (docObj.speciality && docObj.superSpeciality) {
         const matchingSuperSpec = docObj.speciality.super_specialities?.find(
-          ss => ss.name.toLowerCase() === docObj.superSpeciality.toLowerCase()
+          ss => ss.name.trim().toLowerCase() === docObj.superSpeciality.trim().toLowerCase()
         );
         services = matchingSuperSpec?.services || [];
       }
@@ -735,7 +771,7 @@ const getDoctorById = asyncHandler(async (req, res) => {
   let services = [];
   if (docObj.speciality && docObj.superSpeciality) {
     const matchingSuperSpec = docObj.speciality.super_specialities?.find(
-      ss => ss.name.toLowerCase() === docObj.superSpeciality.toLowerCase()
+      ss => ss.name.trim().toLowerCase() === docObj.superSpeciality.trim().toLowerCase()
     );
     services = matchingSuperSpec?.services || [];
   }
@@ -845,7 +881,7 @@ const searchDoctors = asyncHandler(async (req, res) => {
     let services = [];
     if (docObj.speciality && docObj.superSpeciality) {
       const matchingSuperSpec = docObj.speciality.super_specialities?.find(
-        ss => ss.name.toLowerCase() === docObj.superSpeciality.toLowerCase()
+        ss => ss.name.trim().toLowerCase() === docObj.superSpeciality.trim().toLowerCase()
       );
       services = matchingSuperSpec?.services || [];
     }
@@ -945,8 +981,18 @@ const createDoctorByAdmin = asyncHandler(async (req, res) => {
     if (!specialityExists) throw new ApiError(400, "Invalid speciality ID");
 
     if (superSpeciality) {
-      const validSuperSpeciality = specialityExists.super_specialities.find(ss => ss.name.toLowerCase() === superSpeciality.toLowerCase());
-      if (!validSuperSpeciality) throw new ApiError(400, `Invalid super speciality for ${specialityExists.speciality}`);
+      const trimmedSuperSpec = superSpeciality.trim();
+      const validSuperSpeciality = specialityExists.super_specialities.find(
+        ss => ss.name.trim().toLowerCase() === trimmedSuperSpec.toLowerCase()
+      );
+
+      if (!validSuperSpeciality) {
+        const validOptions = specialityExists.super_specialities.map(ss => ss.name).join(", ");
+        throw new ApiError(
+          400,
+          `Invalid super speciality "${trimmedSuperSpec}" for ${specialityExists.speciality}. Available: ${validOptions}`
+        );
+      }
     }
   }
 
