@@ -14,12 +14,12 @@ const appointmentSchema = new mongoose.Schema({
   },
   patientPhone: {
     type: String,
-    required: true, // Required for both guest and registered (sync if logged in)
+    required: function () { return !this.patientId; }, // Required for guest, optional if logged in (linked via patientId)
     trim: true
   },
   patientName: {
     type: String,
-    required: true // Required for guests
+    required: function () { return !this.patientId; } // Required for guests, optional if logged in
   },
   patientEmail: {
     type: String,
