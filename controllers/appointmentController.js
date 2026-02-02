@@ -1,6 +1,7 @@
 const Appointment = require("../models/Appointment");
 const Doctor = require("../models/Docters");
 const User = require("../models/User");
+const Patient = require("../models/Patient");
 const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
@@ -80,7 +81,17 @@ const bookAppointment = asyncHandler(async (req, res) => {
     // Registered user booking: Extract strictly from token
     appointmentData.patientId = req.user._id;
     appointmentData.patientPhone = req.user.whatsappnumber;
-    appointmentData.patientName = req.user.name || patientName;
+
+    // Fetch Name from Patient Profile if not available in User
+    let fetchedName = req.user.name;
+    if (!fetchedName) {
+      const patientProfile = await Patient.findOne({ userId: req.user._id });
+      if (patientProfile) {
+        fetchedName = patientProfile.name;
+      }
+    }
+
+    appointmentData.patientName = fetchedName || patientName;
     appointmentData.patientEmail = req.user.email || patientEmail;
   } else {
     // Guest/Walk-in booking: Mandatory fields from body
