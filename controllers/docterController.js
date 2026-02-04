@@ -205,6 +205,9 @@ async function updateStatus(req, res) {
 
     await doctor.save();
 
+    // Broadcast update to admins
+    refreshAdminStats(req);
+
     return res.json({
       success: true,
       data: {
@@ -260,6 +263,9 @@ async function approveDoctor(req, res) {
 
     await doctor.save();
 
+    // Broadcast update to admins
+    refreshAdminStats(req);
+
     return res.json({
       success: true,
       data: {
@@ -296,6 +302,39 @@ async function getPendingCount(req, res) {
     });
   }
 }
+
+// GET /api/doctor/pending-count - Get count of doctors awaiting approval
+async function getPendingCount(req, res) {
+  try {
+    const count = await Doctor.countDocuments({ status: "pending" });
+    return res.json({
+      success: true,
+      count,
+    });
+  } catch (err) {
+    console.error("Get pending count error:", err);
+    return res.status(400).json({
+      success: false,
+      error: err.message,
+    });
+  }
+}
+
+// Helper to broadcast stats
+const refreshAdminStats = async (req) => {
+  try {
+    const io = req.app.get("io");
+    if (io) {
+      const {
+        broadcastAdminStats,
+      } = require("../sockets/notificationSocketHandler");
+      const pendingCount = await Doctor.countDocuments({ status: "pending" });
+      broadcastAdminStats(io, { pendingDoctorCount: pendingCount });
+    }
+  } catch (err) {
+    console.error("Failed to broadcast admin stats:", err);
+  }
+};
 
 const updateDoctorProfile = asyncHandler(async (req, res) => {
   const {
@@ -545,9 +584,14 @@ const updateDoctorProfile = asyncHandler(async (req, res) => {
 
   await doctor.save();
 
+  // Broadcast update to admins if status became pending
+  if (doctor.status === "pending") {
+    refreshAdminStats(req);
+  }
+
   res
     .status(200)
-    .json(new ApiResponse(200, doctor, "Doctor profile updated successfully"));
+    .json(new ApiResponse(200, doctor, "Profile updated successfully"));
 });
 
 // Manage Leaves
@@ -1329,6 +1373,11 @@ const createDoctorByAdmin = asyncHandler(async (req, res) => {
       "Doctor account created successfully",
     ),
   );
+
+  // Broadcast update to admins if needed
+  if (newDoctor.status === "pending") {
+    refreshAdminStats(req);
+  }
 });
 
 // Admin-only: Bulk create doctors (accepts array)
@@ -1453,6 +1502,11 @@ const bulkCreateDoctors = asyncHandler(async (req, res) => {
         `Created ${results.success.length} doctors, ${results.failed.length} failed`,
       ),
     );
+
+  // Broadcast update to admins if any success
+  if (results.success.length > 0) {
+    refreshAdminStats(req);
+  }
 });
 
 module.exports = {
