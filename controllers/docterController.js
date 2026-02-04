@@ -112,6 +112,14 @@ async function updateStatus(req, res) {
     const { id } = req.params;
     const { status } = req.body;
 
+    // Extra security check: Ensure only admin can perform this action
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        error: "Access denied. Admin privileges required.",
+      });
+    }
+
     if (!status) {
       return res.status(400).json({
         success: false,
@@ -140,35 +148,35 @@ async function updateStatus(req, res) {
     doctor.status = status;
 
     // Send email notification when status changes to 'approved'
-    if (status.toLowerCase() === 'approved' && prevStatus !== 'approved') {
-      if (!doctor.email) {
-        return res.status(400).json({
-          success: false,
-          error: "Cannot approve doctor without email address",
-        });
-      }
+    // if (status.toLowerCase() === 'approved' && prevStatus !== 'approved') {
+    //   if (!doctor.email) {
+    //     return res.status(400).json({
+    //       success: false,
+    //       error: "Cannot approve doctor without email address",
+    //     });
+    //   }
 
-      try {
-        const mailOptions = {
-          from: process.env.SMTP_FROM || process.env.SMTP_USER,
-          to: doctor.email,
-          subject: "Doctor Account Approved - Welcome!",
-          text: `Dear Dr. ${doctor.name},\n\nYour doctor account has been approved! You can now login to the portal and start managing your appointments.\n\nBest regards,\nThe Medical Portal Team`,
-          html: `
-            <h1>Account Approved!</h1>
-            <p>Dear Dr. ${doctor.name},</p>
-            <p>Your doctor account has been <strong>approved</strong>! You can now login to the portal and start managing your appointments.</p>
-            <p>Best regards,<br/>The Medical Portal Team</p>
-          `
-        };
+    //   try {
+    //     const mailOptions = {
+    //       from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    //       to: doctor.email,
+    //       subject: "Doctor Account Approved - Welcome!",
+    //       text: `Dear Dr. ${doctor.name},\n\nYour doctor account has been approved! You can now login to the portal and start managing your appointments.\n\nBest regards,\nThe Medical Portal Team`,
+    //       html: `
+    //         <h1>Account Approved!</h1>
+    //         <p>Dear Dr. ${doctor.name},</p>
+    //         <p>Your doctor account has been <strong>approved</strong>! You can now login to the portal and start managing your appointments.</p>
+    //         <p>Best regards,<br/>The Medical Portal Team</p>
+    //       `
+    //     };
 
-        await transporter.sendMail(mailOptions);
-        console.log(`✅ Approval email sent to ${doctor.email}`);
-      } catch (emailError) {
-        console.error('❌ Failed to send approval email:', emailError);
-        // Continue anyway - don't block the approval
-      }
-    }
+    //     await transporter.sendMail(mailOptions);
+    //     console.log(`✅ Approval email sent to ${doctor.email}`);
+    //   } catch (emailError) {
+    //     console.error('❌ Failed to send approval email:', emailError);
+    //     // Continue anyway - don't block the approval
+    //   }
+    // }
 
     await doctor.save();
 
@@ -185,6 +193,61 @@ async function updateStatus(req, res) {
     });
   } catch (err) {
     console.error("Update status error:", err);
+    return res.status(400).json({
+      success: false,
+      error: err.message,
+    });
+  }
+}
+
+// PATCH /api/doctors/:id/approve - Approve doctor without body
+async function approveDoctor(req, res) {
+  try {
+    const { id } = req.params;
+
+    // Extra security check: Ensure only admin can perform this action
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        error: "Access denied. Admin privileges required.",
+      });
+    }
+
+    const doctor = await Doctor.findById(id);
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        error: "Doctor not found",
+      });
+    }
+
+    if (doctor.status === 'approved') {
+      return res.status(400).json({
+        success: false,
+        message: "Doctor is already approved."
+      });
+    }
+
+    const prevStatus = doctor.status;
+    doctor.status = 'approved';
+
+    // Email logic disabled as per previous request
+
+    await doctor.save();
+
+    return res.json({
+      success: true,
+      data: {
+        doctorId: doctor._id,
+        name: doctor.name,
+        email: doctor.email,
+        status: doctor.status,
+        previousStatus: prevStatus
+      },
+      message: "Doctor status successfully set to approved"
+    });
+  } catch (err) {
+    console.error("Approve doctor error:", err);
     return res.status(400).json({
       success: false,
       error: err.message,
@@ -1094,6 +1157,7 @@ const bulkCreateDoctors = asyncHandler(async (req, res) => {
 
 module.exports = {
   updateStatus,
+  approveDoctor,
   getDoctors,
   getDoctorById,
   searchDoctors,

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
     updateStatus,
+    approveDoctor,
     getDoctors,
     getDoctorById,
     searchDoctors,
@@ -46,6 +47,9 @@ router.get('/:id', getDoctorById);
 
 // GET /api/doctors - Get all doctors
 router.get('/', getDoctors);
+
+// PATCH /api/doctors/:id/approve - Approve doctor (Admin only, no body required)
+router.patch('/:id/approve', authenticate, isAdmin, approveDoctor);
 
 // PATCH /api/doctors/:id/status - Update doctor status (Admin only)
 router.patch('/:id/status', authenticate, isAdmin, updateStatus);
