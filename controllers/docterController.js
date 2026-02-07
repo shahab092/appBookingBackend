@@ -11,6 +11,7 @@ const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const SpecialitySuggestion = require('../models/SpecialitySuggestion');
+const { uploadToR2 } = require('../utils/s3Storage');
 require('dotenv').config();
 
 // Validation Regex
@@ -1155,6 +1156,31 @@ const bulkCreateDoctors = asyncHandler(async (req, res) => {
   res.status(201).json(new ApiResponse(201, results, `Created ${results.success.length} doctors, ${results.failed.length} failed`));
 });
 
+/**
+ * Controller to handle doctor image upload to Cloudflare R2
+ */
+const uploadDoctorImage = asyncHandler(async (req, res) => {
+  if (!req.file) {
+    throw new ApiError(400, "No image file provided");
+  }
+
+  const doctor = await Doctor.findOne({ userId: req.user._id });
+  if (!doctor) {
+    throw new ApiError(404, "Doctor profile not found");
+  }
+
+  // Upload to R2
+  const imageUrl = await uploadToR2(req.file.buffer, req.file.originalname, req.file.mimetype);
+
+  // Update doctor profile with the new image URL
+  doctor.image = imageUrl;
+  await doctor.save();
+
+  res.status(200).json(
+    new ApiResponse(200, { imageUrl }, "Doctor image uploaded successfully")
+  );
+});
+
 module.exports = {
   updateStatus,
   approveDoctor,
@@ -1169,5 +1195,6 @@ module.exports = {
   removeLeave,
   suggestSpeciality,
   createDoctorByAdmin,
-  bulkCreateDoctors
+  bulkCreateDoctors,
+  uploadDoctorImage
 };

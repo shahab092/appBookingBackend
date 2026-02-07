@@ -14,12 +14,45 @@ const {
     removeLeave,
     suggestSpeciality,
     createDoctorByAdmin,
-    bulkCreateDoctors
+    bulkCreateDoctors,
+    uploadDoctorImage
 } = require('../controllers/docterController');
 const authenticate = require('../middleware/auth');
 const isAdmin = require('../middleware/isAdmin');
+const multer = require('multer');
+
+// Multer configuration for image validation
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB limit
+    },
+    fileFilter: (req, file, cb) => {
+        // Only allow specific image types
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
+        if (allowedTypes.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error('Invalid file type. Only JPEG, PNG, and WEBP are allowed.'), false);
+        }
+    },
+});
 
 
+
+// POST /api/doctor/upload-image - Upload doctor profile image (R2)
+router.post('/upload-image', authenticate, (req, res, next) => {
+    upload.single('image')(req, res, (err) => {
+        if (err instanceof multer.MulterError) {
+            // A Multer error occurred when uploading (e.g., file too large)
+            return res.status(400).json({ success: false, error: err.message });
+        } else if (err) {
+            // An unknown error occurred or custom error from fileFilter
+            return res.status(400).json({ success: false, error: err.message });
+        }
+        next();
+    });
+}, uploadDoctorImage);
 
 // POST /api/doctor/create-by-admin - Create doctor account and profile (Admin only)
 router.post('/create-by-admin', authenticate, isAdmin, createDoctorByAdmin);
