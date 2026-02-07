@@ -11,7 +11,7 @@ const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const SpecialitySuggestion = require('../models/SpecialitySuggestion');
-const { uploadToR2 } = require('../utils/s3Storage');
+const { uploadToR2, deleteFromR2 } = require('../utils/s3Storage');
 require('dotenv').config();
 
 // Validation Regex
@@ -280,23 +280,6 @@ async function approveDoctor(req, res) {
     });
   } catch (err) {
     console.error("Approve doctor error:", err);
-    return res.status(400).json({
-      success: false,
-      error: err.message,
-    });
-  }
-}
-
-// GET /api/doctor/pending-count - Get count of doctors awaiting approval
-async function getPendingCount(req, res) {
-  try {
-    const count = await Doctor.countDocuments({ status: "pending" });
-    return res.json({
-      success: true,
-      count,
-    });
-  } catch (err) {
-    console.error("Get pending count error:", err);
     return res.status(400).json({
       success: false,
       error: err.message,
@@ -1514,13 +1497,27 @@ const bulkCreateDoctors = asyncHandler(async (req, res) => {
  * Controller to handle doctor image upload to Cloudflare R2
  */
 const uploadDoctorImage = asyncHandler(async (req, res) => {
+  const { doctorId } = req.body; // Optional: Admins can specify doctorId
+
   if (!req.file) {
     throw new ApiError(400, "No image file provided");
   }
 
-  const doctor = await Doctor.findOne({ userId: req.user._id });
+  let doctor;
+  if (req.user.role === "admin" && doctorId) {
+    doctor = await Doctor.findById(doctorId);
+  } else {
+    doctor = await Doctor.findOne({ userId: req.user._id });
+  }
+
   if (!doctor) {
     throw new ApiError(404, "Doctor profile not found");
+  }
+
+  // If doctor already has an image, delete the old one from R2
+  if (doctor.image) {
+    console.log("Cleanup: Deleting old image...");
+    await deleteFromR2(doctor.image);
   }
 
   // Upload to R2
@@ -1555,5 +1552,6 @@ module.exports = {
   suggestSpeciality,
   createDoctorByAdmin,
   bulkCreateDoctors,
-  uploadDoctorImage
+  uploadDoctorImage,
+  getPendingCount,
 };

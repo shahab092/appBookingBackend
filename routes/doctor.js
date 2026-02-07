@@ -15,8 +15,9 @@ const {
     suggestSpeciality,
     createDoctorByAdmin,
     bulkCreateDoctors,
-    uploadDoctorImage
-} = require('../controllers/docterController');
+    uploadDoctorImage,
+    getPendingCount
+} = require("../controllers/docterController");
 const authenticate = require('../middleware/auth');
 const isAdmin = require('../middleware/isAdmin');
 const multer = require('multer');
