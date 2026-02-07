@@ -3,7 +3,8 @@ const router = express.Router();
 const {
   bookAppointment,
   getMyAppointments,
-  updateAppointmentStatus
+  updateAppointmentStatus,
+  getDoctorAppointments
 } = require("../controllers/appointmentController");
 const verifyJWT = require("../middleware/auth");
 const verifyOptionalJWT = require("../middleware/optionalAuth");
@@ -19,5 +20,8 @@ router.get("/my", getMyAppointments);
 
 // PATCH /api/appointments/:id/status - Update appointment status
 router.patch("/:id/status", updateAppointmentStatus);
+
+// GET /api/appointments/doctor/:doctorId - Get all appointments for a specific doctor
+router.get("/doctor/:doctorId", getDoctorAppointments);
 
 module.exports = router;

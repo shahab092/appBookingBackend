@@ -162,8 +162,27 @@ const updateAppointmentStatus = asyncHandler(async (req, res) => {
   );
 });
 
+// @desc    Get all appointments for a specific doctor
+// @route   GET /api/appointments/doctor/:doctorId
+// @access  Private (Admin or the Doctor themselves)
+const getDoctorAppointments = asyncHandler(async (req, res) => {
+  const { doctorId } = req.params;
+
+  // Optional: Add authorization check here if needed
+  // e.g., if (req.user.role !== 'admin' && req.user.doctorId !== doctorId) ...
+
+  const appointments = await Appointment.find({ doctorId })
+    .populate('patientId', 'name email whatsappnumber')
+    .sort({ date: -1, timeSlot: -1 });
+
+  res.status(200).json(
+    new ApiResponse(200, appointments, "Doctor appointments fetched successfully")
+  );
+});
+
 module.exports = {
   bookAppointment,
   getMyAppointments,
-  updateAppointmentStatus
+  updateAppointmentStatus,
+  getDoctorAppointments
 };
