@@ -12,6 +12,15 @@ const notificationSocketHandler = (io) => {
       console.log(`Notification user registered: ${userId}`);
     });
 
+    // Support for specialized admin room
+    socket.on("identify-admin", (adminId) => {
+      if (!adminId) return;
+      socket.userId = adminId;
+      socket.join(adminId.toString());
+      socket.join("admins"); // Join special admin broadcast room
+      console.log(`Admin user registered for broadcasts: ${adminId}`);
+    });
+
     socket.on("disconnect", () => {
       console.log("User disconnected from notifications:", socket.id);
     });
@@ -29,4 +38,13 @@ const sendNotification = async (io, userId, message, type = "info") => {
   io.to(userId).emit("new-notification", notification);
 };
 
-module.exports = { notificationSocketHandler, sendNotification };
+// Function to send stats update to all admins
+const broadcastAdminStats = async (io, stats) => {
+  io.to("admins").emit("admin-stats-update", stats);
+};
+
+module.exports = {
+  notificationSocketHandler,
+  sendNotification,
+  broadcastAdminStats,
+};
