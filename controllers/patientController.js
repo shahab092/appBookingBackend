@@ -1,5 +1,6 @@
 const Patient = require("../models/Patient");
 const User = require("../models/User");
+const Appointment = require("../models/Appointment");
 const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
@@ -9,14 +10,28 @@ const { uploadToR2, deleteFromR2 } = require("../utils/s3Storage");
 // @route   GET /api/patient/profile
 // @access  Private (Patient only)
 const getPatientProfile = asyncHandler(async (req, res) => {
-    const patient = await Patient.findOne({ userId: req.user._id });
+    let patient = await Patient.findOne({ userId: req.user._id });
 
     if (!patient) {
         throw new ApiError(404, "Patient profile not found");
     }
 
+    // Convert to plain object to add virtual/dynamic fields
+    const patientObj = patient.toObject();
+
+    // Fetch the most recent appointment reason to show as HPI
+    const lastAppointment = await Appointment.findOne({
+        patientId: req.user._id,
+        isDeleted: { $ne: true }
+    }).sort({ createdAt: -1 });
+
+    if (lastAppointment && lastAppointment.reason) {
+        if (!patientObj.medicalHistory) patientObj.medicalHistory = {};
+        patientObj.medicalHistory.hpi = lastAppointment.reason;
+    }
+
     res.status(200).json(
-        new ApiResponse(200, patient, "Patient profile fetched successfully")
+        new ApiResponse(200, patientObj, "Patient profile fetched successfully")
     );
 });
 

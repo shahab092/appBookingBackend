@@ -61,19 +61,34 @@ const patientSchema = new mongoose.Schema(
         },
         medicalHistory: {
             background: String,
-            hpi: String,
             history: String,
             chronicMedications: [String],
             socialHistory: String
         },
         vitals: [
             {
-                weight: Number,
-                height: Number,
+                weight: {
+                    type: Number,
+                    min: [0, "Weight cannot be negative"],
+                    max: [500, "Weight exceeds realistic limit (500kg)"]
+                },
+                height: {
+                    type: Number,
+                    min: [0, "Height cannot be negative"],
+                    max: [300, "Height exceeds realistic limit (300cm)"]
+                },
                 bloodPressure: String,
                 bloodSugar: String,
-                temperature: Number,
-                pulse: Number,
+                temperature: {
+                    type: Number,
+                    min: [90, "Temperature too low (below 90°F)"],
+                    max: [110, "Temperature too high (above 110°F)"]
+                },
+                pulse: {
+                    type: Number,
+                    min: [30, "Pulse rate too low (below 30 bpm)"],
+                    max: [220, "Pulse rate too high (above 220 bpm)"]
+                },
                 date: {
                     type: Date,
                     default: Date.now
@@ -84,7 +99,16 @@ const patientSchema = new mongoose.Schema(
                 }
             }
         ],
-        allergies: [String],
+        allergies: [
+            {
+                name: String,
+                category: {
+                    type: String,
+                    enum: ["food", "environment", "medicine", "other"],
+                    default: "other"
+                }
+            }
+        ],
         insuranceDetails: {
             provider: String,
             policyId: String
