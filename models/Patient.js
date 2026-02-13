@@ -28,12 +28,81 @@ const patientSchema = new mongoose.Schema(
         },
         dateOfBirth: {
             type: Date
+        },
+        address: {
+            type: String,
+            trim: true
+        },
+        job: {
+            type: String,
+            trim: true
+        },
+        income: {
+            type: String,
+            trim: true
+        },
+        bloodGroup: {
+            type: String,
+            enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "unknown"],
+            default: "unknown"
+        },
+        profilePicture: {
+            type: String,
+            default: "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+        },
+        preferredLanguage: {
+            type: String,
+            default: "Urdu/English"
+        },
+        emergencyContact: {
+            name: String,
+            relationship: String,
+            phone: String
+        },
+        medicalHistory: {
+            background: String,
+            hpi: String,
+            history: String,
+            chronicMedications: [String],
+            socialHistory: String
+        },
+        vitals: [
+            {
+                weight: Number,
+                height: Number,
+                bloodPressure: String,
+                bloodSugar: String,
+                temperature: Number,
+                pulse: Number,
+                date: {
+                    type: Date,
+                    default: Date.now
+                },
+                recordedBy: {
+                    type: mongoose.Schema.Types.ObjectId,
+                    ref: "User"
+                }
+            }
+        ],
+        allergies: [String],
+        insuranceDetails: {
+            provider: String,
+            policyId: String
         }
     },
     {
         timestamps: true,
+        toJSON: { virtuals: true },
+        toObject: { virtuals: true }
     }
 );
+
+patientSchema.virtual("age").get(function () {
+    if (!this.dateOfBirth) return null;
+    const diff = Date.now() - this.dateOfBirth.getTime();
+    const ageDate = new Date(diff);
+    return Math.abs(ageDate.getUTCFullYear() - 1970);
+});
 
 const Patient = mongoose.models.Patient || mongoose.model("Patient", patientSchema);
 
