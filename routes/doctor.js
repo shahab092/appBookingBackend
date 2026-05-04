@@ -16,7 +16,8 @@ const {
     createDoctorByAdmin,
     bulkCreateDoctors,
     uploadDoctorImage,
-    getPendingCount
+    getPendingCount,
+    getMe
 } = require("../controllers/docterController");
 const authenticate = require('../middleware/auth');
 const isAdmin = require('../middleware/isAdmin');
@@ -40,6 +41,9 @@ const upload = multer({
 });
 
 
+
+// GET /api/doctor/me - Get current doctor's profile
+router.get("/me", authenticate, getMe);
 
 // POST /api/doctor/upload-image - Upload doctor profile image (R2)
 router.post('/upload-image', authenticate, (req, res, next) => {

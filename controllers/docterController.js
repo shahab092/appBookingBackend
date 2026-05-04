@@ -1532,6 +1532,14 @@ const uploadDoctorImage = asyncHandler(async (req, res) => {
   );
 });
 
+const getMe = asyncHandler(async (req, res) => {
+  const doctor = await Doctor.findOne({ userId: req.user._id });
+  if (!doctor) {
+    throw new ApiError(404, "Doctor profile not found");
+  }
+  res.status(200).json(new ApiResponse(200, doctor, "Doctor profile fetched successfully"));
+});
+
 /**
  * Controller to handle doctor image upload to Cloudflare R2
  */
