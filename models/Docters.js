@@ -39,10 +39,11 @@ const doctorSchema = new mongoose.Schema({
     locations: [
         {
             name: { type: String, required: true },
+            address: { type: String, required: false }, // Hospital/Clinic address text
             phone: { type: String, required: false }, // Hospital/Clinic number
             coordinates: {
-                lat: { type: Number, required: true },
-                lng: { type: Number, required: true }
+                lat: { type: Number, required: false },
+                lng: { type: Number, required: false }
             }
         }
     ],

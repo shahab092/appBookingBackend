@@ -7,6 +7,7 @@ const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const mongoose = require("mongoose");
 const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
@@ -805,6 +806,9 @@ const getAvailableSlots = asyncHandler(async (req, res) => {
 // Get Doctor's availability configuration (weekly schedule)
 const getDoctorAvailabilityConfig = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new ApiError(400, "Invalid doctor ID");
+  }
 
   const doctor = await Doctor.findById(id).select(
     "availability locations consultationTime",
@@ -916,6 +920,7 @@ const getDoctors = async (req, res, next) => {
           docObj.locations?.map((loc) => ({
             hospitalId: loc._id,
             name: loc.name,
+            address: loc.address,
             phone: loc.phone,
             coordinates: loc.coordinates,
           })) || [],
@@ -982,6 +987,9 @@ const getDoctors = async (req, res, next) => {
 // Get single doctor by ID
 const getDoctorById = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new ApiError(400, "Invalid doctor ID");
+  }
 
   const doctor = await Doctor.findById(id)
     .populate("userId", "whatsappnumber role -_id")
@@ -1023,6 +1031,7 @@ const getDoctorById = asyncHandler(async (req, res) => {
       docObj.locations?.map((loc) => ({
         hospitalId: loc._id,
         name: loc.name,
+        address: loc.address,
         phone: loc.phone,
         coordinates: loc.coordinates,
       })) || [],
@@ -1150,6 +1159,7 @@ const searchDoctors = asyncHandler(async (req, res) => {
         docObj.locations?.map((loc) => ({
           hospitalId: loc._id,
           name: loc.name,
+          address: loc.address,
           phone: loc.phone,
           coordinates: loc.coordinates,
         })) || [],
@@ -1562,4 +1572,5 @@ module.exports = {
   bulkCreateDoctors,
   uploadDoctorImage,
   getPendingCount,
+  getMe,
 };
