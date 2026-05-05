@@ -343,37 +343,45 @@ const updateDoctorProfile = asyncHandler(async (req, res) => {
     fees,
   } = req.body;
 
-  let doctor;
+   let doctor;
 
-  // If user is a doctor, they find/create their own profile
-  if (req.user.role === "doctor") {
-    doctor = await Doctor.findOne({ userId: req.user._id });
+   // If user is a doctor, they find/create their own profile
+   if (req.user.role === "doctor") {
+     doctor = await Doctor.findOne({ userId: req.user._id });
 
-    // If record doesn't exist, create it on the fly
-    if (!doctor) {
-      if (!name || !pmdcRegistrationNumber) {
-        throw new ApiError(
-          400,
-          "First-time setup requires name, and pmdcRegistrationNumber",
-        );
-      }
-      doctor = new Doctor({
-        userId: req.user._id,
-        name,
-        email,
-        phone: emergencyContact || req.user.whatsappnumber,
-        address,
-        pmdcRegistrationNumber,
-        status: "incomplete",
-      });
-    }
-  } else if (req.user.role === "admin" && doctorId) {
-    doctor = await Doctor.findById(doctorId);
-  } else {
-    throw new ApiError(403, "Not authorized to update this profile");
-  }
+     // If record doesn't exist, create it on the fly
+     if (!doctor) {
+       if (!name || !pmdcRegistrationNumber) {
+         throw new ApiError(
+           400,
+           "First-time setup requires name, and pmdcRegistrationNumber",
+         );
+       }
+       doctor = new Doctor({
+         userId: req.user._id,
+         name,
+         email,
+         phone: emergencyContact || req.user.whatsappnumber,
+         address,
+         pmdcRegistrationNumber,
+         status: "incomplete",
+       });
+     }
+   } else if (req.user.role === "admin" && doctorId) {
+     doctor = await Doctor.findById(doctorId);
+   } else {
+     throw new ApiError(403, "Not authorized to update this profile");
+   }
 
-  if (!doctor) throw new ApiError(404, "Doctor profile not found");
+   if (!doctor) throw new ApiError(404, "Doctor profile not found");
+
+   // Capture original values to detect critical changes
+   const original = {
+     name: doctor.name,
+     pmdcRegistrationNumber: doctor.pmdcRegistrationNumber,
+     education: JSON.stringify(doctor.education || []),
+     userId: doctor.userId.toString(),
+   };
 
   // Update basic fields if provided
   if (name) doctor.name = name;
@@ -536,36 +544,46 @@ const updateDoctorProfile = asyncHandler(async (req, res) => {
     }
     doctor.availability = availability;
   }
-  if (education) doctor.education = education;
-  if (req.body.image) doctor.image = req.body.image;
-  if (req.body.experience) doctor.experience = req.body.experience;
-  if (about !== undefined) doctor.about = about;
-  if (gender) doctor.gender = gender;
-  if (languages) doctor.languages = languages;
-  if (awards) doctor.awards = awards;
-  if (memberships) doctor.memberships = memberships;
-  if (fees) doctor.fees = fees;
+   if (education) doctor.education = education;
+   if (req.body.image) doctor.image = req.body.image;
+   if (req.body.experience) doctor.experience = req.body.experience;
+   if (about !== undefined) doctor.about = about;
+   if (gender) doctor.gender = gender;
+   if (languages) doctor.languages = languages;
+   if (awards) doctor.awards = awards;
+   if (memberships) doctor.memberships = memberships;
+   if (fees) doctor.fees = fees;
 
-  // Update completeness score
-  doctor.completenessScore = calculateCompleteness(doctor);
+   // Update completeness score
+   doctor.completenessScore = calculateCompleteness(doctor);
 
-  // Check for mandatory fields to determine status
-  const isMandatoryFilled =
-    doctor.speciality &&
-    doctor.locations &&
-    doctor.locations.length > 0 &&
-    doctor.availability &&
-    doctor.availability.length > 0 &&
-    doctor.education &&
-    doctor.education.length > 0 &&
-    doctor.pmdcRegistrationNumber;
+   // Detect if critical fields that require admin re-approval were changed
+   const criticalFieldsChanged =
+     (name !== undefined && name !== original.name) ||
+     (pmdcRegistrationNumber !== undefined && pmdcRegistrationNumber !== original.pmdcRegistrationNumber) ||
+     (education !== undefined && JSON.stringify(education) !== original.education);
+     // userId is not updatable via this endpoint, but included for completeness
 
-  if (!isMandatoryFilled) {
-    doctor.status = "incomplete";
-  } else if (doctor.status === "incomplete") {
-    // If it was incomplete and now mandatory fields are filled, set back to pending
-    doctor.status = "pending";
-  }
+   // Check for mandatory fields to determine status
+   const isMandatoryFilled =
+     doctor.speciality &&
+     doctor.locations &&
+     doctor.locations.length > 0 &&
+     doctor.availability &&
+     doctor.availability.length > 0 &&
+     doctor.education &&
+     doctor.education.length > 0 &&
+     doctor.pmdcRegistrationNumber;
+
+   if (!isMandatoryFilled) {
+     doctor.status = "incomplete";
+   } else if (doctor.status === "incomplete") {
+     // If it was incomplete and now mandatory fields are filled, set back to pending
+     doctor.status = "pending";
+   } else if (req.user.role === "doctor" && doctor.status === "inprogress" && criticalFieldsChanged) {
+     // If doctor updates critical fields while admin is reviewing, revert to pending for re-review
+     doctor.status = "pending";
+   }
 
   await doctor.save();
 
