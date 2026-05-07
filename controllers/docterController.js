@@ -1222,6 +1222,7 @@ const searchDoctors = asyncHandler(async (req, res) => {
       leaves: docObj.leaves,
       completenessScore: docObj.completenessScore,
       registrationDate: docObj.registrationDate,
+      fees: docObj.fees,
     };
   });
 
