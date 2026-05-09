@@ -7,6 +7,38 @@ const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const { convertTo24Hour } = require("../utils/slotUtils");
 
+const getPakistanDateTime = () => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Karachi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date());
+
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+
+  return {
+    date: `${values.year}-${values.month}-${values.day}`,
+    time: `${values.hour}:${values.minute}`,
+  };
+};
+
+const isTruthyQuery = (value) =>
+  value === true || value === "true" || value === "1";
+
+const applyUpcomingFilter = (filter) => {
+  const now = getPakistanDateTime();
+
+  filter.status = "confirmed";
+  filter.$or = [
+    { date: { $gt: now.date } },
+    { date: now.date, timeSlot: { $gte: now.time } },
+  ];
+};
+
 // @desc    Book a new appointment
 // @route   POST /api/appointments
 // @access  Private (Patient only)
@@ -141,15 +173,56 @@ const getMyAppointments = asyncHandler(async (req, res) => {
 // @route   GET /api/appointments/patient
 // @access  Private
 const getPatientAppointments = asyncHandler(async (req, res) => {
-  const appointments = await Appointment.find({
+  const filter = {
     patientId: req.user._id,
     isDeleted: false,
-  })
+  };
+
+  const upcomingOnly =
+    isTruthyQuery(req.query.upcoming) || isTruthyQuery(req.query.upcomming);
+
+  if (upcomingOnly) {
+    applyUpcomingFilter(filter);
+  }
+
+  const appointments = await Appointment.find(filter)
     .populate('doctorId', 'name speciality')
-    .sort({ date: -1, timeSlot: -1 });
+    .sort(upcomingOnly ? { date: 1, timeSlot: 1 } : { date: -1, timeSlot: -1 });
 
   res.status(200).json(
     new ApiResponse(200, appointments, "Patient appointments fetched successfully")
+  );
+});
+
+// @desc    Get logged in doctor's appointments
+// @route   GET /api/appointments/doctor
+// @access  Private
+const getLoggedInDoctorAppointments = asyncHandler(async (req, res) => {
+  if (req.user.role !== 'doctor') {
+    throw new ApiError(403, "Access denied. Doctors only.");
+  }
+
+  const doctor = await Doctor.findOne({ userId: req.user._id });
+  if (!doctor) throw new ApiError(404, "Doctor profile not found");
+
+  const filter = {
+    doctorId: doctor._id,
+    isDeleted: false,
+  };
+
+  const upcomingOnly =
+    isTruthyQuery(req.query.upcoming) || isTruthyQuery(req.query.upcomming);
+
+  if (upcomingOnly) {
+    applyUpcomingFilter(filter);
+  }
+
+  const appointments = await Appointment.find(filter)
+    .populate('patientId', 'name email whatsappnumber')
+    .sort(upcomingOnly ? { date: 1, timeSlot: 1 } : { date: -1, timeSlot: -1 });
+
+  res.status(200).json(
+    new ApiResponse(200, appointments, "Doctor appointments fetched successfully")
   );
 });
 
@@ -200,6 +273,7 @@ module.exports = {
   bookAppointment,
   getMyAppointments,
   getPatientAppointments,
+  getLoggedInDoctorAppointments,
   updateAppointmentStatus,
   getDoctorAppointments
 };
