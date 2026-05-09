@@ -67,6 +67,12 @@ const calculateCompleteness = (doctor) => {
   return Math.min(score, 100);
 };
 
+const hasValidEducation = (education = []) =>
+  education.length > 0 &&
+  education.every(
+    (edu) => edu.degree && edu.institute && edu.startYear && edu.endYear,
+  );
+
 // Helper to check for overlapping time sessions
 const hasOverlap = (sessions) => {
   const days = [
@@ -564,16 +570,13 @@ const updateDoctorProfile = asyncHandler(async (req, res) => {
      (education !== undefined && JSON.stringify(education) !== original.education);
      // userId is not updatable via this endpoint, but included for completeness
 
-   // Check for mandatory fields to determine status
+   // Check for mandatory fields to determine status.
    const isMandatoryFilled =
-     doctor.speciality &&
+     Boolean(doctor.name) &&
+     Boolean(doctor.pmdcRegistrationNumber) &&
      doctor.locations &&
      doctor.locations.length > 0 &&
-     doctor.availability &&
-     doctor.availability.length > 0 &&
-     doctor.education &&
-     doctor.education.length > 0 &&
-     doctor.pmdcRegistrationNumber;
+     hasValidEducation(doctor.education);
 
    if (!isMandatoryFilled) {
      doctor.status = "incomplete";
