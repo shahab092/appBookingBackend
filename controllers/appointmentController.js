@@ -137,6 +137,22 @@ const getMyAppointments = asyncHandler(async (req, res) => {
   );
 });
 
+// @desc    Get logged in patient's appointments
+// @route   GET /api/appointments/patient
+// @access  Private
+const getPatientAppointments = asyncHandler(async (req, res) => {
+  const appointments = await Appointment.find({
+    patientId: req.user._id,
+    isDeleted: false,
+  })
+    .populate('doctorId', 'name speciality')
+    .sort({ date: -1, timeSlot: -1 });
+
+  res.status(200).json(
+    new ApiResponse(200, appointments, "Patient appointments fetched successfully")
+  );
+});
+
 // @desc    Update appointment status (Cancel/Complete)
 // @route   PATCH /api/appointments/:id/status
 // @access  Private
@@ -183,6 +199,7 @@ const getDoctorAppointments = asyncHandler(async (req, res) => {
 module.exports = {
   bookAppointment,
   getMyAppointments,
+  getPatientAppointments,
   updateAppointmentStatus,
   getDoctorAppointments
 };

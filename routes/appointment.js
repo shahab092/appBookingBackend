@@ -3,6 +3,7 @@ const router = express.Router();
 const {
   bookAppointment,
   getMyAppointments,
+  getPatientAppointments,
   updateAppointmentStatus,
   getDoctorAppointments
 } = require("../controllers/appointmentController");
@@ -17,6 +18,9 @@ router.use(verifyJWT);
 
 // GET /api/appointments/my - Get user's appointments
 router.get("/my", getMyAppointments);
+
+// GET /api/appointments/patient - Get logged-in patient's appointments
+router.get("/patient", getPatientAppointments);
 
 // PATCH /api/appointments/:id/status - Update appointment status
 router.patch("/:id/status", updateAppointmentStatus);
