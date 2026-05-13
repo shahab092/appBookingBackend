@@ -197,6 +197,9 @@ const getPatientAppointments = asyncHandler(async (req, res) => {
 // @desc    Get logged in doctor's appointments
 // @route   GET /api/appointments/doctor
 // @access  Private
+// @desc    Get logged in doctor's appointments
+// @route   GET /api/appointments/doctor
+// @access  Private
 const getLoggedInDoctorAppointments = asyncHandler(async (req, res) => {
   if (req.user.role !== 'doctor') {
     throw new ApiError(403, "Access denied. Doctors only.");
@@ -219,10 +222,33 @@ const getLoggedInDoctorAppointments = asyncHandler(async (req, res) => {
 
   const appointments = await Appointment.find(filter)
     .populate('patientId', 'name email whatsappnumber')
-    .sort(upcomingOnly ? { date: 1, timeSlot: 1 } : { date: -1, timeSlot: -1 });
+    .sort(
+      upcomingOnly
+        ? { date: 1, timeSlot: 1 }
+        : { date: -1, timeSlot: -1 }
+    );
+
+  const formattedAppointments = appointments.map((appointment) => ({
+    ...appointment.toObject(),
+
+    patientName:
+      appointment.patientId?.name || appointment.patientName,
+
+    patientEmail:
+      appointment.patientId?.email || appointment.patientEmail,
+
+    patientPhone:
+      appointment.patientId?.whatsappnumber || appointment.patientPhone,
+
+    isGuest: !appointment.patientId,
+  }));
 
   res.status(200).json(
-    new ApiResponse(200, appointments, "Doctor appointments fetched successfully")
+    new ApiResponse(
+      200,
+      formattedAppointments,
+      "Doctor appointments fetched successfully"
+    )
   );
 });
 
@@ -254,18 +280,37 @@ const updateAppointmentStatus = asyncHandler(async (req, res) => {
 // @desc    Get all appointments for a specific doctor
 // @route   GET /api/appointments/doctor/:doctorId
 // @access  Private (Admin or the Doctor themselves)
+// @desc    Get all appointments for a specific doctor
+// @route   GET /api/appointments/doctor/:doctorId
+// @access  Private (Admin or the Doctor themselves)
 const getDoctorAppointments = asyncHandler(async (req, res) => {
   const { doctorId } = req.params;
-
-  // Optional: Add authorization check here if needed
-  // e.g., if (req.user.role !== 'admin' && req.user.doctorId !== doctorId) ...
 
   const appointments = await Appointment.find({ doctorId })
     .populate('patientId', 'name email whatsappnumber')
     .sort({ date: -1, timeSlot: -1 });
 
+  const formattedAppointments = appointments.map((appointment) => ({
+    ...appointment.toObject(),
+
+    patientName:
+      appointment.patientId?.name || appointment.patientName,
+
+    patientEmail:
+      appointment.patientId?.email || appointment.patientEmail,
+
+    patientPhone:
+      appointment.patientId?.whatsappnumber || appointment.patientPhone,
+
+    isGuest: !appointment.patientId,
+  }));
+
   res.status(200).json(
-    new ApiResponse(200, appointments, "Doctor appointments fetched successfully")
+    new ApiResponse(
+      200,
+      formattedAppointments,
+      "Doctor appointments fetched successfully"
+    )
   );
 });
 
