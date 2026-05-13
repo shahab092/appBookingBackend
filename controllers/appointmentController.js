@@ -217,6 +217,13 @@ const getLoggedInDoctorAppointments = asyncHandler(async (req, res) => {
     isTruthyQuery(req.query.upcoming) || isTruthyQuery(req.query.upcomming);
 
   if (upcomingOnly) {
+    // Fix: Ensure proper date filtering for upcoming appointments
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    filter.date = { $gte: today };
+    
+    // Keep the original function call for compatibility
     applyUpcomingFilter(filter);
   }
 
