@@ -574,8 +574,8 @@ const updateDoctorProfile = asyncHandler(async (req, res) => {
    const isMandatoryFilled =
      Boolean(doctor.name) &&
      Boolean(doctor.pmdcRegistrationNumber) &&
-     doctor.locations &&
-     doctor.locations.length > 0 &&
+     doctor.availability &&
+     doctor.availability.length > 0 &&
      hasValidEducation(doctor.education);
 
    if (!isMandatoryFilled) {
