@@ -34,7 +34,7 @@ const bookAppointment = asyncHandler(async (req, res) => {
   if (!validTypes.includes(appointmentType)) {
     throw new ApiError(
       400,
-      `Invalid appointmentType. Valid types: ${validTypes.join(", ")}`
+      `Invalid appointmentType. Valid types: ${validTypes.join(", ")}`,
     );
   }
 
@@ -99,13 +99,15 @@ const getPatientAppointments = asyncHandler(async (req, res) => {
   if (date) filter.date = date;
   if (appointmentType) filter.appointmentType = appointmentType;
 
-  if (upcomingOnly === "true") {
-    const today = new Date().toISOString().split("T")[0];
+  const isUpcoming = upcomingOnly === "true";
+  const today = new Date().toISOString().split("T")[0];
+
+  if (isUpcoming) {
     filter.date = { $gte: today };
-    filter.status = { $in: ["booked"] };
+    filter.status = { $in: ["booked", "confirmed"] };
   }
+  
   if (pastOnly === "true") {
-    const today = new Date().toISOString().split("T")[0];
     filter.date = { $lt: today };
   }
 
@@ -113,19 +115,18 @@ const getPatientAppointments = asyncHandler(async (req, res) => {
     .populate({
       path: "doctorId",
       select:
-        "firstName lastName email phoneNumber profilePicture doctorProfile role",
+        "firstName lastName email phoneNumber profilePicture doctorProfile",
       match: {
         role: "doctor",
         isActive: true,
-        status: { $in: ["active", "approved"] },
       },
     })
-    .sort({ date: 1, timeSlot: 1 });
+    .sort(isUpcoming ? { date: 1, timeSlot: 1 } : { date: -1, timeSlot: -1 });
 
   const validAppointments = appointments.filter((app) => app.doctorId !== null);
 
   const patient = await User.findById(patientId).select(
-    "firstName lastName email phoneNumber profilePicture"
+    "firstName lastName email phoneNumber profilePicture",
   );
 
   const appointmentsWithDetails = validAppointments.map((appointment) => {
@@ -148,8 +149,8 @@ const getPatientAppointments = asyncHandler(async (req, res) => {
     new ApiResponse(
       200,
       appointmentsWithDetails,
-      "Patient appointments fetched"
-    )
+      "Patient appointments fetched",
+    ),
   );
 });
 
@@ -190,7 +191,7 @@ const updateAppointmentStatus = asyncHandler(async (req, res) => {
   if (!validStatuses.includes(status)) {
     throw new ApiError(
       400,
-      `Invalid status. Valid statuses: ${validStatuses.join(", ")}`
+      `Invalid status. Valid statuses: ${validStatuses.join(", ")}`,
     );
   }
 

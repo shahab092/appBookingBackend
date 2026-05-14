@@ -58,4 +58,10 @@ const appointmentSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
+// Optimize for role-based upcoming appointment queries
+appointmentSchema.index({ doctorId: 1, date: 1, status: 1 });
+appointmentSchema.index({ patientId: 1, date: 1, status: 1 });
+// For general sorting and date-based filtering
+appointmentSchema.index({ date: 1, timeSlot: 1 });
+
 module.exports = mongoose.model("Appointment", appointmentSchema);

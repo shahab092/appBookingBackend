@@ -16,7 +16,7 @@ router.get("/patient/:patientId", getPatientAppointments);
 // GET /api/appointments/doctor/:doctorId
 router.get("/doctor/:doctorId", getDoctorAppointments);
 
+// PATCH /api/appointments/:appointmentId/status
 router.patch("/:appointmentId/status", updateAppointmentStatus);
-
 
 module.exports = router;
