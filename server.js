@@ -35,17 +35,27 @@ app.use(
       "http://localhost:5173",
       "https://mern-stack-auth-drab.vercel.app",
       "https://hostpital-managment.vercel.app",
-      "https://appbookingfrontend.onrender.com"
+      "https://appbookingfrontend.onrender.com",
+      "https://www.ashfaqhospitals.com",
     ],
     credentials: true,
   })
 );
 
 // Routes
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.url}`);
+  next();
+});
+
 app.use("/api/auth", authLimiter, require("./routes/users.js"));
 app.use("/api/doctor", doctorRoute);
 app.use("/api/appointments", appointmentRoute);
 app.use("/api/notifications", notificationRoute);
+app.use("/api/patient", require("./routes/patientRoutes"));
+app.use("/api/specialities", require("./routes/specialityRoutes.js"));
+app.use("/api/reviews", require("./routes/reviewRoutes"));
+app.use("/api/payments", require("./routes/paymentRoutes"));
 
 // Test route
 app.get("/", (req, res) => {

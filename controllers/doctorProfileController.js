@@ -4,8 +4,8 @@ const bcrypt = require('bcrypt');
 const { isValidObjectId } = require("mongoose");
 
 const asyncHandler = require("../utils/asyncHandler");
-const { ApiError } = require("../utils/ApiError");
-const { ApiResponse } = require("../utils/ApiResponse");
+const ApiError = require("../utils/ApiError");
+const ApiResponse = require("../utils/ApiResponse");
 
 const User = require("../models/User");
 const DoctorProfile = require("../models/DoctorProfile");
@@ -206,7 +206,15 @@ const approveDoctor = asyncHandler(async (req, res) => {
 
 
     doctor.status = status;
+
     await doctor.save();
+    const io = req.app.get("io");
+    await createNotification(io, doctorId, {
+        title: "New Appointment",
+        message: `your request approved`,
+        type: "info",
+        // link: `/doctor/dashboard`,
+    });
 
 
     return res.status(200).json(

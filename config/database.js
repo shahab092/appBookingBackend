@@ -41,5 +41,5 @@ const dataBase = async () => {
     throw error; // ⛔ Important! Rethrow so server doesn't start
   }
 };
-// testing
+
 module.exports = dataBase;

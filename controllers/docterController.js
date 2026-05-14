@@ -1,105 +1,150 @@
-const Doctor = require('../models/Docters');
-const User = require('../models/User');
-const crypto = require('crypto');
-const nodemailer = require('nodemailer');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
+const Doctor = require("../models/Docters");
+const User = require("../models/User");
+const Appointment = require("../models/Appointment");
+const Speciality = require("../models/Speciality");
+const { generateSlots, convertTo24Hour } = require("../utils/slotUtils");
+const crypto = require("crypto");
+const nodemailer = require("nodemailer");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const mongoose = require("mongoose");
 const asyncHandler = require("../utils/asyncHandler");
-const ApiResponse = require('../utils/ApiResponse');
+const ApiError = require("../utils/ApiError");
+const ApiResponse = require("../utils/ApiResponse");
+const SpecialitySuggestion = require('../models/SpecialitySuggestion');
+const { uploadToR2, deleteFromR2 } = require('../utils/s3Storage');
 require('dotenv').config();
+
+// Validation Regex
+const TIME_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/; // HH:mm (24h)
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_REGEX = /^\+?\d{10,15}$/;
+const VALID_DAYS = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+
+// Helper to calculate completeness score
+const calculateCompleteness = (doctor) => {
+  const weights = {
+    speciality: 20,
+    locations: 20,
+    availability: 20,
+    education: 15,
+    image: 10,
+    experience: 10,
+    pmdcRegistrationNumber: 5,
+    about: 5,
+    gender: 2,
+    languages: 2,
+    fees: 1,
+  };
+
+  let score = 0;
+  if (doctor.speciality) score += weights.speciality;
+  if (doctor.locations?.length > 0) score += weights.locations;
+  if (doctor.availability?.length > 0) score += weights.availability;
+  if (doctor.education?.length > 0) {
+    const hasValidEducation = doctor.education.every(
+      (edu) => edu.degree && edu.institute && edu.startYear && edu.endYear,
+    );
+    if (hasValidEducation) score += weights.education;
+  }
+  if (doctor.image) score += weights.image;
+  if (doctor.experience > 0) score += weights.experience;
+  if (doctor.pmdcRegistrationNumber) score += weights.pmdcRegistrationNumber;
+  if (doctor.about) score += weights.about;
+  if (doctor.gender) score += weights.gender;
+  if (doctor.languages?.length > 0) score += weights.languages;
+  if (doctor.fees?.online > 0 || doctor.fees?.inclinic > 0)
+    score += weights.fees;
+
+  return Math.min(score, 100);
+};
+
+const hasValidEducation = (education = []) =>
+  education.length > 0 &&
+  education.every(
+    (edu) => edu.degree && edu.institute && edu.startYear && edu.endYear,
+  );
+
+// Helper to check for overlapping time sessions
+const hasOverlap = (sessions) => {
+  const days = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+  ];
+
+  for (const day of days) {
+    const daySessions = sessions
+      .filter((s) => s.day === day)
+      .map((s) => {
+        const [startH, startM] = s.startTime.split(":").map(Number);
+        const [endH, endM] = s.endTime.split(":").map(Number);
+        return {
+          start: startH * 60 + startM,
+          end: endH * 60 + endM,
+        };
+      })
+      .sort((a, b) => a.start - b.start);
+
+    for (let i = 0; i < daySessions.length - 1; i++) {
+      if (daySessions[i].end > daySessions[i + 1].start) {
+        return true; // Overlap found
+      }
+    }
+  }
+  return false;
+};
 
 // Create a SINGLE transporter instance
 const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
+  host: "smtp.gmail.com",
   port: 587,
   secure: false,
   auth: {
     user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS
+    pass: process.env.SMTP_PASS,
   },
   tls: {
-    rejectUnauthorized: false
-  }
+    rejectUnauthorized: false,
+  },
 });
 
 // Test transporter on startup
 transporter.verify(function (error, success) {
   if (error) {
-    console.log('❌ SMTP Connection Error:', error.message);
-    console.log('🔄 Email will fail. Check your Gmail app password.');
+    console.log("❌ SMTP Connection Error:", error.message);
+    console.log("🔄 Email will fail. Check your Gmail app password.");
   } else {
-    console.log('✅ SMTP Server is ready to take messages');
-    console.log('📧 Using:', process.env.SMTP_USER || 'dev.shahab92@gmail.com');
+    console.log("✅ SMTP Server is ready to take messages");
+    console.log("📧 Using:", process.env.SMTP_USER || "dev.shahab92@gmail.com");
   }
 });
-
-const registerDoctor = async (req, res, next) => {
-  try {
-    const { firstName, lastName, email, phoneNumber, password, address, doctorProfile } = req.body;
-
-    // 1️⃣ Validate required fields
-    if (!email || !password || !firstName || !lastName) {
-      return res.status(400).json({
-        success: false,
-        message: "First name, last name, email, and password are required",
-      });
-    }
-
-    if (!doctorProfile || !doctorProfile.licenseNumber) {
-      return res.status(400).json({
-        success: false,
-        message: "doctorProfile with licenseNumber is required",
-      });
-    }
-
-    // 2️⃣ Check if doctor already exists
-    const existingDoctor = await User.findOne({ email });
-    if (existingDoctor) {
-      return res.status(400).json({
-        success: false,
-        message: "Email already registered",
-      });
-    }
-
-    // ✅ 3️⃣ Hash the password before saving
-    const hashedPassword = await bcrypt.hash(password, 10);
-    console.log('🔐 Password hashed successfully');
-
-    // 4️⃣ Create doctor with hashed password
-    const newDoctor = await User.create({
-      firstName,
-      lastName,
-      email,
-      phoneNumber,
-      password: hashedPassword, // ✅ Store hashed password
-      role: "doctor",
-      address,
-      doctorProfile,
-      status: "pending",
-    });
-
-    // 5️⃣ Return success response (without password)
-    res.status(201).json({
-      success: true,
-      message: "Doctor registered successfully",
-      data: {
-        id: newDoctor._id,
-        fullName: newDoctor.fullName,
-        email: newDoctor.email,
-        doctorProfile: newDoctor.doctorProfile,
-      },
-    });
-  } catch (error) {
-    console.error('❌ Doctor registration error:', error);
-    next(error);
-  }
-};
 
 // PATCH /api/doctors/:id/status
 async function updateStatus(req, res) {
   try {
     const { id } = req.params;
     const { status } = req.body;
+
+    // Extra security check: Ensure only admin can perform this action
+    if (req.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        error: "Access denied. Admin privileges required.",
+      });
+    }
 
     if (!status) {
       return res.status(400).json({
@@ -108,7 +153,23 @@ async function updateStatus(req, res) {
       });
     }
 
-    const doctor = await User.findById(id);
+    // Validate status against allowed values
+    const allowedStatuses = [
+      "pending",
+      "inprogress",
+      "approved",
+      "away",
+      "in clinic",
+      "incomplete",
+    ];
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid status. Allowed values: ${allowedStatuses.join(", ")}`,
+      });
+    }
+
+    const doctor = await Doctor.findById(id);
     if (!doctor) {
       return res.status(404).json({
         success: false,
@@ -116,153 +177,55 @@ async function updateStatus(req, res) {
       });
     }
 
-    // ✅ EMAIL EXISTENCE CHECK
-    if (!doctor.email) {
-      return res.status(400).json({
-        success: false,
-        error: "Doctor email not found",
-      });
-    }
-
-    // ✅ EMAIL FORMAT VALIDATION
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(doctor.email)) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid email address",
-      });
-    }
-
     const prevStatus = doctor.status;
     doctor.status = status;
 
-    // when moving from pending -> inprogress, generate JWT confirmation token and send email
-    if (status.toLowerCase() === "inprogress") {
-      // Generate JWT token for doctor confirmation
-      const token = jwt.sign(
-        {
-          doctorId: doctor._id.toString(),
-          email: doctor.email,
-          purpose: 'doctor_confirmation',
-          timestamp: Date.now()
-        },
-        process.env.DOCTOR_CONFIRMATION_SECRET,
-        { expiresIn: '24h' }
-      );
+    // Send email notification when status changes to 'approved'
+    // if (status.toLowerCase() === 'approved' && prevStatus !== 'approved') {
+    //   if (!doctor.email) {
+    //     return res.status(400).json({
+    //       success: false,
+    //       error: "Cannot approve doctor without email address",
+    //     });
+    //   }
 
-      // Keep backward compatibility - also store token hash in DB
-      // This helps if we need to revoke tokens or track usage
-      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-      doctor.doctorConfirmationTokenHash = tokenHash;
-      doctor.doctorTokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+    //   try {
+    //     const mailOptions = {
+    //       from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    //       to: doctor.email,
+    //       subject: "Doctor Account Approved - Welcome!",
+    //       text: `Dear Dr. ${doctor.name},\n\nYour doctor account has been approved! You can now login to the portal and start managing your appointments.\n\nBest regards,\nThe Medical Portal Team`,
+    //       html: `
+    //         <h1>Account Approved!</h1>
+    //         <p>Dear Dr. ${doctor.name},</p>
+    //         <p>Your doctor account has been <strong>approved</strong>! You can now login to the portal and start managing your appointments.</p>
+    //         <p>Best regards,<br/>The Medical Portal Team</p>
+    //       `
+    //     };
 
-      // Save the status change
-      await doctor.save();
+    //     await transporter.sendMail(mailOptions);
+    //     console.log(`✅ Approval email sent to ${doctor.email}`);
+    //   } catch (emailError) {
+    //     console.error('❌ Failed to send approval email:', emailError);
+    //     // Continue anyway - don't block the approval
+    //   }
+    // }
 
-      const backend = process.env.BACKEND_URL || `${req.protocol}://${req.get("host")}`;
-      
-      // ✅ Use JWT token in URL
-      const encodedToken = encodeURIComponent(token);
-      const link = `${backend}/api/doctor/confirm?token=${encodedToken}`;
-
-      console.log('🔗 === DOCTOR CONFIRMATION EMAIL ===');
-      console.log('📝 JWT Token generated (first 50 chars):', token.substring(0, 50) + '...');
-      console.log('🔐 Token Hash (stored in DB):', tokenHash.substring(0, 20) + '...');
-      console.log('📧 Doctor email:', doctor.email);
-      console.log('🆔 Doctor ID:', doctor._id);
-      console.log('🔗 Generated link:', link);
-      console.log('⏰ Expires at:', doctor.doctorTokenExpiresAt);
-      console.log('🏁 =================================');
-
-      const mailOptions = {
-        from: process.env.SMTP_FROM || process.env.SMTP_USER || 'dev.shahab92@gmail.com',
-        to: doctor.email,
-        subject: "Doctor Account Approval - Action Required",
-        text: `Hello ${doctor.firstName || ""},\n\nYour doctor registration has been reviewed and approved!\n\nPlease confirm your registration by clicking the link:\n${link}\n\nThis link is valid for 24 hours.\n\nAfter confirmation, you can login with your credentials.\n\nIf you did not request this, please ignore this email.`,
-        html: `
-          <!DOCTYPE html>
-          <html>
-          <head>
-              <style>
-                  body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                  .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                  .header { background: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
-                  .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 5px 5px; }
-                  .button { display: inline-block; background: #4CAF50; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
-                  .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #666; }
-                  .link-box { background: #fff; border: 1px solid #ddd; padding: 10px; border-radius: 5px; margin: 15px 0; word-break: break-all; font-family: monospace; font-size: 12px; }
-              </style>
-          </head>
-          <body>
-              <div class="container">
-                  <div class="header">
-                      <h1>Doctor Account Approval</h1>
-                  </div>
-                  <div class="content">
-                      <h2>Hello Dr. ${doctor.firstName || ""} ${doctor.lastName || ""},</h2>
-                      <p>We are pleased to inform you that your doctor registration has been reviewed and <strong>approved</strong>!</p>
-                      
-                      <p>To activate your account, please click the button below:</p>
-                      
-                      <a href="${link}" class="button">Confirm & Activate Account</a>
-                      
-                      <p>Or copy this link:</p>
-                      <div class="link-box">${link}</div>
-                      
-                      <p><strong>Important Notes:</strong></p>
-                      <ul>
-                          <li>This link is valid for 24 hours</li>
-                          <li>After confirmation, your account status will change to <strong>"approved"</strong></li>
-                          <li>You can then login using your registered email and password</li>
-                      </ul>
-                      
-                      <p>If you have any questions, please contact our support team.</p>
-                      
-                      <div class="footer">
-                          <p>This is an automated message. Please do not reply to this email.</p>
-                          <p>&copy; ${new Date().getFullYear()} Medical Portal. All rights reserved.</p>
-                      </div>
-                  </div>
-              </div>
-          </body>
-          </html>
-        `,
-      };
-
-      try {
-        // Try to send email
-        await transporter.sendMail(mailOptions);
-
-        return res.json({
-          success: true,
-          message: "Status updated and confirmation email sent successfully",
-          data: doctor,
-          emailSent: true,
-          // Return minimal info for debugging
-          confirmationLink: `${backend}/api/doctor/confirm?token=[JWT_TOKEN]`
-        });
-      } catch (emailError) {
-        // Status was updated, but email failed
-        console.error("Email sending failed:", emailError.message);
-
-        return res.json({
-          success: true,
-          warning: "Email delivery failed",
-          message: "Status updated to inprogress, but confirmation email could not be sent. Please provide this link to the doctor manually:",
-          data: doctor,
-          emailSent: false,
-          confirmationLink: link
-        });
-      }
-    }
-
-    // For other status updates (not inprogress)
     await doctor.save();
+
+    // Broadcast update to admins
+    refreshAdminStats(req);
 
     return res.json({
       success: true,
-      data: doctor,
-      emailSent: null // No email was attempted
+      data: {
+        doctorId: doctor._id,
+        name: doctor.name,
+        email: doctor.email,
+        status: doctor.status,
+        previousStatus: prevStatus,
+      },
+      message: `Doctor status updated to "${status}"${status === "approved" ? ". Approval email sent." : ""}`,
     });
   } catch (err) {
     console.error("Update status error:", err);
@@ -273,452 +236,1363 @@ async function updateStatus(req, res) {
   }
 }
 
-// GET /api/doctors/confirm?token=...
-async function confirmDoctor(req, res) {
+// PATCH /api/doctors/:id/approve - Approve doctor without body
+async function approveDoctor(req, res) {
   try {
-    console.log('🔍 === DOCTOR CONFIRMATION REQUEST ===');
-    console.log('📝 Full URL:', req.originalUrl);
-    console.log('📋 Query params:', req.query);
-    
-    const { token } = req.query;
-    
-    if (!token) {
-      console.log('❌ No token provided');
-      return sendErrorPage(res, 'Invalid Confirmation Link', 'The confirmation link is incomplete or missing token.');
-    }
-    
-    console.log('🔑 Token received (first 50 chars):', token.substring(0, 50) + '...');
-    
-    let decoded;
-    try {
-      // Verify JWT token
-      decoded = jwt.verify(token, process.env.DOCTOR_CONFIRMATION_SECRET);
-      console.log('✅ JWT verified successfully');
-      console.log('📋 JWT payload:', {
-        doctorId: decoded.doctorId,
-        email: decoded.email,
-        purpose: decoded.purpose,
-        exp: new Date(decoded.exp * 1000),
-        iat: new Date(decoded.iat * 1000)
+    const { id } = req.params;
+
+    // Extra security check: Ensure only admin can perform this action
+    if (req.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        error: "Access denied. Admin privileges required.",
       });
-    } catch (jwtError) {
-      console.log('❌ JWT verification failed:', jwtError.message);
-      
-      if (jwtError.name === 'TokenExpiredError') {
-        return sendErrorPage(res, 'Link Expired', 'This confirmation link has expired. Please request a new one from the administrator.');
-      } else if (jwtError.name === 'JsonWebTokenError') {
-        return sendErrorPage(res, 'Invalid Link', 'The confirmation link is invalid or corrupted.');
-      } else {
-        return sendErrorPage(res, 'Invalid Link', 'The confirmation link could not be verified.');
-      }
     }
-    
-    // Verify token purpose
-    if (decoded.purpose !== 'doctor_confirmation') {
-      console.log('❌ Invalid token purpose:', decoded.purpose);
-      return sendErrorPage(res, 'Invalid Link', 'This link is not for doctor confirmation.');
-    }
-    
-    const doctor = await User.findById(decoded.doctorId);
-    
+
+    const doctor = await Doctor.findById(id);
     if (!doctor) {
-      console.log('❌ Doctor not found with ID:', decoded.doctorId);
-      return sendErrorPage(res, 'Doctor Not Found', 'The doctor account associated with this link could not be found.');
-    }
-    
-    console.log('✅ Doctor found:', {
-      email: doctor.email,
-      firstName: doctor.firstName,
-      lastName: doctor.lastName,
-      status: doctor.status,
-      doctorConfirmationTokenHash: doctor.doctorConfirmationTokenHash ? 'Exists' : 'Missing'
-    });
-
-    // Check if already confirmed
-    if (doctor.status === 'active' || doctor.status === 'approved') {
-      console.log('ℹ️ Doctor already has status:', doctor.status);
-      return sendAlreadyConfirmedPage(res, doctor);
-    }
-    
-    // Check if doctor is in correct status
-    if (doctor.status !== 'inprogress') {
-      console.log('❌ Doctor not in inprogress status:', doctor.status);
-      return sendErrorPage(res, 'Invalid Request', `Doctor account is in "${doctor.status}" status and cannot be confirmed.`);
-    }
-    
-    // Optional: Verify token hash for additional security (backward compatibility)
-    if (doctor.doctorConfirmationTokenHash) {
-      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-      if (doctor.doctorConfirmationTokenHash !== tokenHash) {
-        console.log('❌ Token hash mismatch');
-        console.log('   URL Token hash:', tokenHash.substring(0, 20) + '...');
-        console.log('   DB Token hash:', doctor.doctorConfirmationTokenHash.substring(0, 20) + '...');
-        return sendErrorPage(res, 'Invalid Link', 'This confirmation link has already been used or is invalid.');
-      }
-    }
-    
-    // Check token expiration from DB (backward compatibility)
-    if (doctor.doctorTokenExpiresAt && doctor.doctorTokenExpiresAt < new Date()) {
-      console.log('❌ Token expired in DB:', doctor.doctorTokenExpiresAt);
-      return sendErrorPage(res, 'Link Expired', 'This confirmation link has expired. Please request a new one.');
+      return res.status(404).json({
+        success: false,
+        error: "Doctor not found",
+      });
     }
 
-    console.log('✅ All validations passed!');
-    
-    // Update doctor status
-    doctor.status = 'approved';
-    
-    // Clear token data
-    doctor.doctorConfirmationTokenHash = undefined;
-    doctor.doctorTokenExpiresAt = undefined;
-    doctor.confirmationToken = undefined;
-    doctor.tokenExpiresAt = undefined;
-    
-    // Set confirmation flags
-    doctor.isDoctorConfirmed = true;
-    doctor.doctorConfirmedAt = new Date();
+    if (doctor.status === "approved") {
+      return res.status(400).json({
+        success: false,
+        message: "Doctor is already approved.",
+      });
+    }
+
+    const prevStatus = doctor.status;
+    doctor.status = "approved";
+
+    // Email logic disabled as per previous request
 
     await doctor.save();
-    
-    console.log('🎉 Doctor confirmed successfully!');
-    console.log('📊 New status:', doctor.status);
-    console.log('🏁 =================================');
 
-    // Send welcome email
-    try {
-      const welcomeMailOptions = {
-        from: process.env.SMTP_FROM || process.env.SMTP_USER,
-        to: doctor.email,
-        subject: "🎉 Welcome to Medical Portal - Your Account is Now Active!",
-        html: `
-          <!DOCTYPE html>
-          <html>
-          <head>
-              <style>
-                  body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; }
-                  .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-                  .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-                  .button { display: inline-block; background: #4CAF50; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
-                  .credentials { background: #e8f5e9; border-left: 4px solid #4CAF50; padding: 15px; margin: 20px 0; }
-                  .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #666; }
-              </style>
-          </head>
-          <body>
-              <div class="header">
-                  <h1>Welcome to Medical Portal!</h1>
-              </div>
-              <div class="content">
-                  <h2>Hello Dr. ${doctor.firstName} ${doctor.lastName},</h2>
-                  
-                  <p>We are delighted to inform you that your doctor account has been <strong>successfully confirmed and activated!</strong> 🎉</p>
-                  
-                  <div class="credentials">
-                      <p><strong>Account Details:</strong></p>
-                      <p>📧 Email: <strong>${doctor.email}</strong></p>
-                      <p>✅ Status: <strong style="color: #4CAF50;">APPROVED</strong></p>
-                      <p>📅 Activated: ${new Date().toLocaleDateString()}</p>
-                  </div>
-                  
-                  <p><strong>To access your account:</strong></p>
-                  <ol>
-                      <li>Go to the login page</li>
-                      <li>Enter your email: <strong>${doctor.email}</strong></li>
-                      <li>Enter your password (the one you created during registration)</li>
-                      <li>Click "Login" to access your dashboard</li>
-                  </ol>
-                  
-                  <p style="text-align: center;">
-                      <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/login" class="button">
-                          🔓 Go to Login Page
-                      </a>
-                  </p>
-                  
-                  <p>You now have access to:</p>
-                  <ul>
-                      <li>✅ Patient Appointment Management</li>
-                      <li>✅ Medical Records Access</li>
-                      <li>✅ Prescription Management</li>
-                      <li>✅ Analytics Dashboard</li>
-                  </ul>
-                  
-                  <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
-                  
-                  <div class="footer">
-                      <p>Best regards,<br>The Medical Portal Team</p>
-                      <p>This is an automated message. Please do not reply to this email.</p>
-                  </div>
-              </div>
-          </body>
-          </html>
-        `
-      };
+    // Broadcast update to admins
+    refreshAdminStats(req);
 
-      await transporter.sendMail(welcomeMailOptions);
-      console.log('✅ Welcome email sent to:', doctor.email);
-    } catch (emailError) {
-      console.log("⚠️ Welcome email failed:", emailError.message);
-    }
-
-    // Return success HTML page
-    return sendSuccessPage(res, doctor);
-
+    return res.json({
+      success: true,
+      data: {
+        doctorId: doctor._id,
+        name: doctor.name,
+        email: doctor.email,
+        status: doctor.status,
+        previousStatus: prevStatus,
+      },
+      message: "Doctor status successfully set to approved",
+    });
   } catch (err) {
-    console.error('💥 Confirm doctor error:', err);
-    console.error('📋 Error details:', err.stack);
-    
-    return sendErrorPage(res, 'Server Error', `An unexpected error occurred: ${err.message}`);
+    console.error("Approve doctor error:", err);
+    return res.status(400).json({
+      success: false,
+      error: err.message,
+    });
   }
 }
 
-// Helper function to send error pages
-function sendErrorPage(res, title, message) {
-  return res.send(`
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>${title} - Medical Portal</title>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-        <script src="https://cdn.tailwindcss.com"></script>
-    </head>
-    <body class="bg-gradient-to-br from-red-50 to-pink-100 min-h-screen flex items-center justify-center p-4">
-        <div class="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
-            <div class="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <svg class="w-10 h-10 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.998-.833-2.732 0L4.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
-                </svg>
-            </div>
-            
-            <h1 class="text-3xl font-bold text-gray-800 mb-4">${title}</h1>
-            
-            <div class="text-gray-600 mb-6">
-                <p>${message}</p>
-            </div>
-            
-            <div class="space-y-3">
-                <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/support" 
-                   class="block w-full bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700 transition">
-                    Contact Support
-                </a>
-                <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/login" 
-                   class="block w-full border border-gray-300 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-50 transition">
-                    Go to Login
-                </a>
-            </div>
-        </div>
-    </body>
-    </html>
-  `);
+// GET /api/doctor/pending-count - Get count of doctors awaiting approval
+async function getPendingCount(req, res) {
+  try {
+    const count = await Doctor.countDocuments({ status: "pending" });
+    return res.json({
+      success: true,
+      count,
+    });
+  } catch (err) {
+    console.error("Get pending count error:", err);
+    return res.status(400).json({
+      success: false,
+      error: err.message,
+    });
+  }
 }
 
-// Helper function for already confirmed page
-function sendAlreadyConfirmedPage(res, doctor) {
-  return res.send(`
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Already Confirmed - Medical Portal</title>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-        <script src="https://cdn.tailwindcss.com"></script>
-    </head>
-    <body class="bg-gradient-to-br from-green-50 to-emerald-100 min-h-screen flex items-center justify-center p-4">
-        <div class="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
-            <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <svg class="w-10 h-10 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-            </div>
-            
-            <h1 class="text-3xl font-bold text-gray-800 mb-4">Account Already Active</h1>
-            
-            <div class="text-center mb-6">
-                <h2 class="text-xl font-bold text-gray-800">Dr. ${doctor.firstName} ${doctor.lastName}</h2>
-                <p class="text-gray-600 mt-2">${doctor.email}</p>
-            </div>
-            
-            <div class="bg-green-100 text-green-800 font-bold py-2 px-4 rounded-full inline-block mb-6">
-                STATUS: ${doctor.status.toUpperCase()}
-            </div>
-            
-            <div class="text-gray-600 mb-6">
-                <p>Your account is already active and confirmed.</p>
-                <p class="mt-2">You can login using your credentials.</p>
-            </div>
-            
-            <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/login" 
-               class="block w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition">
-                Go to Login Page
-            </a>
-        </div>
-    </body>
-    </html>
-  `);
-}
+// Helper to broadcast stats
+const refreshAdminStats = async (req) => {
+  try {
+    const io = req.app.get("io");
+    if (io) {
+      const {
+        broadcastAdminStats,
+      } = require("../sockets/notificationSocketHandler");
+      const pendingCount = await Doctor.countDocuments({ status: "pending" });
+      broadcastAdminStats(io, { pendingDoctorCount: pendingCount });
+    }
+  } catch (err) {
+    console.error("Failed to broadcast admin stats:", err);
+  }
+};
 
-// Helper function to send success page (your existing success page, slightly modified)
-function sendSuccessPage(res, doctor) {
-  return res.send(`
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Account Confirmed Successfully - Medical Portal</title>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-        <script src="https://cdn.tailwindcss.com"></script>
-        <style>
-            * { font-family: 'Inter', sans-serif; }
-            body {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                min-height: 100vh;
+const updateDoctorProfile = asyncHandler(async (req, res) => {
+  const {
+    doctorId, // Optional for Admins
+    name, // Support for creation/update
+    email, // Support for creation/update
+    emergencyContact, // Support for creation/update
+    pmdcRegistrationNumber, // Support for creation/update
+    specialityId,
+    superSpeciality,
+    consultationTime,
+    locations,
+    availability,
+    education,
+    address,
+    about,
+    gender,
+    languages,
+    awards,
+    memberships,
+    fees,
+  } = req.body;
+
+   let doctor;
+
+   // If user is a doctor, they find/create their own profile
+   if (req.user.role === "doctor") {
+     doctor = await Doctor.findOne({ userId: req.user._id });
+
+     // If record doesn't exist, create it on the fly
+     if (!doctor) {
+       if (!name || !pmdcRegistrationNumber) {
+         throw new ApiError(
+           400,
+           "First-time setup requires name, and pmdcRegistrationNumber",
+         );
+       }
+       doctor = new Doctor({
+         userId: req.user._id,
+         name,
+         email,
+         phone: emergencyContact || req.user.whatsappnumber,
+         address,
+         pmdcRegistrationNumber,
+         status: "incomplete",
+       });
+     }
+   } else if (req.user.role === "admin" && doctorId) {
+     doctor = await Doctor.findById(doctorId);
+   } else {
+     throw new ApiError(403, "Not authorized to update this profile");
+   }
+
+   if (!doctor) throw new ApiError(404, "Doctor profile not found");
+
+   // Capture original values to detect critical changes
+   const original = {
+     name: doctor.name,
+     pmdcRegistrationNumber: doctor.pmdcRegistrationNumber,
+     education: JSON.stringify(doctor.education || []),
+     userId: doctor.userId.toString(),
+   };
+
+  // Update basic fields if provided
+  if (name) doctor.name = name;
+  if (email) {
+    if (!EMAIL_REGEX.test(email))
+      throw new ApiError(400, "Invalid email format");
+    doctor.email = email;
+  }
+  if (emergencyContact) {
+    if (!PHONE_REGEX.test(emergencyContact))
+      throw new ApiError(
+        400,
+        "Invalid phone number format. Use numeric digits (10-15 characters).",
+      );
+    doctor.phone = emergencyContact;
+  }
+  if (pmdcRegistrationNumber)
+    doctor.pmdcRegistrationNumber = pmdcRegistrationNumber;
+  if (address) doctor.address = address;
+
+  // Validate specialityId if provided
+  if (specialityId) {
+    const specialityExists = await Speciality.findById(specialityId);
+    if (!specialityExists) {
+      throw new ApiError(
+        400,
+        "Invalid speciality ID. Speciality does not exist.",
+      );
+    }
+
+    // If superSpeciality is also provided, validate it belongs to this speciality
+    if (superSpeciality) {
+      const trimmedSuperSpec = superSpeciality.trim();
+      const validSuperSpeciality = specialityExists.super_specialities.find(
+        (ss) => ss.name.trim().toLowerCase() === trimmedSuperSpec.toLowerCase(),
+      );
+
+      if (!validSuperSpeciality) {
+        const validOptions = specialityExists.super_specialities
+          .map((ss) => ss.name)
+          .join(", ");
+        throw new ApiError(
+          400,
+          `Invalid super speciality. "${trimmedSuperSpec}" is not valid for "${specialityExists.speciality}". Available: ${validOptions}`,
+        );
+      }
+    }
+
+    doctor.speciality = specialityId;
+  } else if (superSpeciality) {
+    // If superSpeciality is provided without specialityId, check if doctor already has a speciality
+    if (doctor.speciality) {
+      const currentSpeciality = await Speciality.findById(doctor.speciality);
+      if (currentSpeciality) {
+        const trimmedSuperSpec = superSpeciality.trim();
+        const validSuperSpeciality = currentSpeciality.super_specialities.find(
+          (ss) =>
+            ss.name.trim().toLowerCase() === trimmedSuperSpec.toLowerCase(),
+        );
+
+        if (!validSuperSpeciality) {
+          const validOptions = currentSpeciality.super_specialities
+            .map((ss) => ss.name)
+            .join(", ");
+          throw new ApiError(
+            400,
+            `Invalid super speciality. "${trimmedSuperSpec}" is not valid for "${currentSpeciality.speciality}". Available: ${validOptions}`,
+          );
+        }
+      }
+    } else {
+      throw new ApiError(
+        400,
+        "Cannot set super speciality without a parent speciality.",
+      );
+    }
+  }
+
+  if (superSpeciality) doctor.superSpeciality = superSpeciality;
+  if (consultationTime) doctor.consultationTime = consultationTime;
+  if (locations) doctor.locations = locations;
+  if (availability) {
+    // 1. Check for overlapping schedules
+    if (hasOverlap(availability)) {
+      throw new ApiError(
+        400,
+        "Availability sessions overlap. Please check your schedule.",
+      );
+    }
+
+    // 2. Validate and Link locationId for inclinic slots
+    for (const session of availability) {
+      // Validate Day
+      if (!VALID_DAYS.includes(session.day)) {
+        throw new ApiError(
+          400,
+          `Invalid day: ${session.day}. Must be one of: ${VALID_DAYS.join(", ")}`,
+        );
+      }
+
+      // Validate Time Format (HH:mm)
+      if (
+        !TIME_REGEX.test(session.startTime) ||
+        !TIME_REGEX.test(session.endTime)
+      ) {
+        throw new ApiError(
+          400,
+          `Invalid time format for ${session.day}. Expected HH:mm (24h), e.g., "09:00" or "14:30". Got: "${session.startTime}" - "${session.endTime}"`,
+        );
+      }
+
+      // Validate Start < End
+      const [startH, startM] = session.startTime.split(":").map(Number);
+      const [endH, endM] = session.endTime.split(":").map(Number);
+      const startTotal = startH * 60 + startM;
+      const endTotal = endH * 60 + endM;
+
+      if (startTotal >= endTotal) {
+        throw new ApiError(
+          400,
+          `Invalid session on ${session.day}: Start time (${session.startTime}) must be strictly before end time (${session.endTime}).`,
+        );
+      }
+
+      if (session.appointmentType === "inclinic") {
+        if (!session.locationId) {
+          if (session.locationName) {
+            const matchedLocation = doctor.locations.find(
+              (loc) =>
+                loc.name &&
+                loc.name.toLowerCase() === session.locationName.toLowerCase(),
+            );
+            if (matchedLocation) {
+              session.locationId = matchedLocation._id;
             }
-            .success-icon {
-                animation: bounce 1s ease infinite alternate;
-            }
-            @keyframes bounce {
-                from { transform: translateY(0); }
-                to { transform: translateY(-10px); }
-            }
-            .pulse {
-                animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-            }
-            @keyframes pulse {
-                0%, 100% { opacity: 1; }
-                50% { opacity: 0.5; }
-            }
-        </style>
-    </head>
-    <body class="flex items-center justify-center p-4">
-        <div class="max-w-2xl w-full bg-white rounded-3xl shadow-2xl overflow-hidden">
-            <!-- Success Header -->
-            <div class="bg-gradient-to-r from-green-500 to-emerald-600 p-10 text-center">
-                <div class="success-icon w-24 h-24 bg-white/30 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <div class="w-16 h-16 bg-white rounded-full flex items-center justify-center">
-                        <svg class="w-12 h-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
-                        </svg>
-                    </div>
-                </div>
-                <h1 class="text-4xl font-bold text-white mb-3">Account Confirmed!</h1>
-                <p class="text-xl text-white/90">Your doctor account is now active</p>
-            </div>
-            
-            <!-- Main Content -->
-            <div class="p-8">
-                <!-- Doctor Info -->
-                <div class="text-center mb-8">
-                    <h2 class="text-2xl font-bold text-gray-800 mb-2">Dr. ${doctor.firstName} ${doctor.lastName}</h2>
-                    <p class="text-gray-600">${doctor.email}</p>
-                </div>
-                
-                <!-- Status Badge -->
-                <div class="inline-flex items-center px-6 py-3 rounded-full bg-green-100 text-green-800 font-bold text-lg mb-8">
-                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                    </svg>
-                    ACCOUNT STATUS: APPROVED
-                </div>
-                
-                <!-- Instructions -->
-                <div class="bg-blue-50 border-l-4 border-blue-500 p-6 rounded-r-xl mb-8">
-                    <h3 class="text-lg font-bold text-gray-800 mb-4">Next Steps:</h3>
-                    <ol class="list-decimal list-inside space-y-2 text-gray-700">
-                        <li>Go to the login page</li>
-                        <li>Enter your email: <strong class="text-blue-600">${doctor.email}</strong></li>
-                        <li>Enter your password (created during registration)</li>
-                        <li>Click "Login" to access your dashboard</li>
-                    </ol>
-                </div>
-                
-                <!-- Action Button -->
-                <div class="text-center">
-                    <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/login" 
-                       class="inline-flex items-center px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold text-xl rounded-xl hover:opacity-90 transition mb-4">
-                        <svg class="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path>
-                        </svg>
-                        Go to Login Page
-                    </a>
-                    
-                    <div class="pulse bg-blue-100 inline-flex items-center px-4 py-2 rounded-full">
-                        <svg class="w-4 h-4 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                        </svg>
-                        <span class="text-blue-700 font-medium">
-                            Auto-redirect in <span id="countdown" class="font-bold">10</span> seconds
-                        </span>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <script>
-            // Auto-redirect after 10 seconds
-            let seconds = 10;
-            const countdown = document.getElementById('countdown');
-            const interval = setInterval(() => {
-                seconds--;
-                countdown.textContent = seconds;
-                if (seconds <= 0) {
-                    clearInterval(interval);
-                    window.location.href = '${process.env.FRONTEND_URL || 'http://localhost:5173'}/login';
-                }
-            }, 1000);
-        </script>
-    </body>
-    </html>
-  `);
-}
+          } else if (doctor.locations.length === 1) {
+            // Fallback: If both are missing and doctor has only one location, default to it
+            session.locationId = doctor.locations[0]._id;
+          }
+        }
+
+        if (!session.locationId) {
+          throw new ApiError(
+            400,
+            `Location (ID or Name) is required for in-clinic session on ${session.day}`,
+          );
+        }
+
+        // Check if locationId exists in doctor's locations
+        const locationExists = doctor.locations.some(
+          (loc) => loc._id.toString() === session.locationId.toString(),
+        );
+        if (!locationExists) {
+          throw new ApiError(
+            400,
+            `Invalid location ID for ${session.day} session`,
+          );
+        }
+      }
+    }
+    doctor.availability = availability;
+  }
+   if (education) doctor.education = education;
+   if (req.body.image) doctor.image = req.body.image;
+   if (req.body.experience) doctor.experience = req.body.experience;
+   if (about !== undefined) doctor.about = about;
+   if (gender) doctor.gender = gender;
+   if (languages) doctor.languages = languages;
+   if (awards) doctor.awards = awards;
+   if (memberships) doctor.memberships = memberships;
+   if (fees) doctor.fees = fees;
+
+   // Update completeness score
+   doctor.completenessScore = calculateCompleteness(doctor);
+
+   // Detect if critical fields that require admin re-approval were changed
+   const criticalFieldsChanged =
+     (name !== undefined && name !== original.name) ||
+     (pmdcRegistrationNumber !== undefined && pmdcRegistrationNumber !== original.pmdcRegistrationNumber) ||
+     (education !== undefined && JSON.stringify(education) !== original.education);
+     // userId is not updatable via this endpoint, but included for completeness
+
+   // Check for mandatory fields to determine status.
+   const isMandatoryFilled =
+     Boolean(doctor.name) &&
+     Boolean(doctor.pmdcRegistrationNumber) &&
+     doctor.availability &&
+     doctor.availability.length > 0 &&
+     hasValidEducation(doctor.education);
+
+   if (!isMandatoryFilled) {
+     doctor.status = "incomplete";
+   } else if (doctor.status === "incomplete") {
+     // If it was incomplete and now mandatory fields are filled, set back to pending
+     doctor.status = "pending";
+   } else if (req.user.role === "doctor" && doctor.status === "inprogress" && criticalFieldsChanged) {
+     // If doctor updates critical fields while admin is reviewing, revert to pending for re-review
+     doctor.status = "pending";
+   }
+
+  await doctor.save();
+
+  // Broadcast update to admins if status became pending
+  if (doctor.status === "pending") {
+    refreshAdminStats(req);
+  }
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, doctor, "Profile updated successfully"));
+});
+
+// Manage Leaves
+const addLeave = asyncHandler(async (req, res) => {
+  const { date } = req.body;
+  if (!date) throw new ApiError(400, "Date is required");
+
+  const doctor = await Doctor.findOne({ userId: req.user._id });
+  if (!doctor) throw new ApiError(404, "Doctor profile not found");
+
+  const leaveDate = new Date(date).setHours(0, 0, 0, 0);
+  if (
+    doctor.leaves.some((l) => new Date(l).setHours(0, 0, 0, 0) === leaveDate)
+  ) {
+    throw new ApiError(400, "Leave already exists for this date");
+  }
+
+  doctor.leaves.push(date);
+  await doctor.save();
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, doctor.leaves, "Leave added successfully"));
+});
+
+const removeLeave = asyncHandler(async (req, res) => {
+  const { date } = req.body;
+  if (!date) throw new ApiError(400, "Date is required");
+
+  const doctor = await Doctor.findOne({ userId: req.user._id });
+  if (!doctor) throw new ApiError(404, "Doctor profile not found");
+
+  const leaveDate = new Date(date).setHours(0, 0, 0, 0);
+  doctor.leaves = doctor.leaves.filter(
+    (l) => new Date(l).setHours(0, 0, 0, 0) !== leaveDate,
+  );
+  await doctor.save();
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, doctor.leaves, "Leave removed successfully"));
+});
+
+// Speciality Suggestion
+const suggestSpeciality = asyncHandler(async (req, res) => {
+  const { name } = req.body;
+  if (!name) throw new ApiError(400, "Speciality name is required");
+
+  const doctor = await Doctor.findOne({ userId: req.user._id });
+  if (!doctor) throw new ApiError(404, "Doctor profile not found");
+
+  const suggestion = await SpecialitySuggestion.create({
+    suggestedBy: doctor._id,
+    name,
+  });
+
+  res
+    .status(201)
+    .json(new ApiResponse(201, suggestion, "Speciality suggestion submitted"));
+});
+
+// Get Available Slots
+const getAvailableSlots = asyncHandler(async (req, res) => {
+  const { doctorId, date, locationId, appointmentType } = req.query;
+
+  if (!doctorId || !date || !appointmentType) {
+    throw new ApiError(400, "doctorId, date, appointmentType are required");
+  }
+
+  if (appointmentType === "inclinic" && !locationId) {
+    throw new ApiError(
+      400,
+      "locationId is required for in-clinic appointments",
+    );
+  }
+
+  // -------------------------------
+  // 1. Fetch doctor (lean = faster)
+  // -------------------------------
+  const doctor = await Doctor.findById(doctorId)
+    .select("name status availability locations consultationTime leaves")
+    .lean();
+
+  if (!doctor) throw new ApiError(404, "Doctor not found");
+
+  if (doctor.status !== "approved") {
+    return res.json(
+      new ApiResponse(200, [], "Doctor is not available for booking"),
+    );
+  }
+
+  // -------------------------------
+  // 2. Date validations
+  // -------------------------------
+  const searchDate = new Date(date);
+  searchDate.setHours(0, 0, 0, 0);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (searchDate < today) {
+    throw new ApiError(400, "Cannot fetch slots for past dates");
+  }
+
+  if (
+    doctor.leaves?.some(
+      (d) => new Date(d).setHours(0, 0, 0, 0) === searchDate.getTime(),
+    )
+  ) {
+    return res.json(new ApiResponse(200, [], "Doctor is on leave"));
+  }
+
+  // -------------------------------
+  // 3. Day availability
+  // -------------------------------
+  const dayName = new Date(date).toLocaleDateString("en-US", {
+    weekday: "long",
+  });
+
+  const dayAvailability = doctor.availability.filter(
+    (a) =>
+      a.day === dayName &&
+      a.appointmentType === appointmentType &&
+      (appointmentType === "online" || a.locationId?.toString() === locationId),
+  );
+
+  if (!dayAvailability.length) {
+    return res.json(new ApiResponse(200, [], "No availability for this day"));
+  }
+
+  // -------------------------------
+  // 4. Fetch booked slots (SCOPED)
+  // -------------------------------
+  const appointmentFilter = {
+    doctorId,
+    date,
+    appointmentType,
+    status: { $in: ["booked", "confirmed"] },
+    isDeleted: false,
+  };
+
+  if (appointmentType === "inclinic") {
+    appointmentFilter.locationId = locationId;
+  }
+
+  const bookedAppointments = await Appointment.find(appointmentFilter)
+    .select("timeSlot -_id")
+    .lean();
+
+  const bookedSlotSet = new Set(
+    bookedAppointments.map((a) => convertTo24Hour(a.timeSlot)),
+  );
+
+  // -------------------------------
+  // 5. Pre-resolve locations map
+  // -------------------------------
+  const locationMap = {};
+  doctor.locations?.forEach((loc) => {
+    locationMap[loc._id.toString()] = loc;
+  });
+
+  // -------------------------------
+  // 6. Generate slots
+  // -------------------------------
+  const now = new Date();
+  const isToday = searchDate.getTime() === today.getTime();
+  const consultationTime = doctor.consultationTime || 15;
+
+  let slots = [];
+
+  for (const avail of dayAvailability) {
+    const generatedSlots = generateSlots(
+      avail.startTime,
+      avail.endTime,
+      consultationTime,
+    );
+
+    for (const time of generatedSlots) {
+      if (isToday) {
+        const [h, m] = time.split(":").map(Number);
+        const slotTime = new Date();
+        slotTime.setHours(h, m, 0, 0);
+        if (slotTime <= now) continue;
+      }
+
+      if (bookedSlotSet.has(time)) continue;
+
+      const loc =
+        appointmentType === "inclinic"
+          ? locationMap[avail.locationId?.toString()]
+          : null;
+
+      slots.push({
+        time,
+        appointmentType,
+        locationId: loc?._id || null,
+        locationName: loc?.name || "Online",
+        locationPhone: loc?.phone || "N/A",
+      });
+    }
+  }
+
+  if (!slots.length) {
+    return res.json(new ApiResponse(200, [], "No available slots"));
+  }
+
+  // -------------------------------
+  // 7. Group slots
+  // -------------------------------
+  const grouped = { morning: [], afternoon: [], evening: [] };
+
+  for (const slot of slots) {
+    const [h, m] = slot.time.split(":").map(Number);
+    const period = h < 12 ? "morning" : h < 17 ? "afternoon" : "evening";
+
+    const hours12 = h % 12 || 12;
+    const formattedTime = `${hours12}:${m.toString().padStart(2, "0")} ${h >= 12 ? "pm" : "am"}`;
+
+    grouped[period].push({ ...slot, time: formattedTime });
+  }
+
+  return res.json(
+    new ApiResponse(200, grouped, "Available slots fetched successfully"),
+  );
+});
+
+// Get Doctor's availability configuration (weekly schedule)
+const getDoctorAvailabilityConfig = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new ApiError(400, "Invalid doctor ID");
+  }
+
+  const doctor = await Doctor.findById(id).select(
+    "availability locations consultationTime",
+  );
+  if (!doctor) throw new ApiError(404, "Doctor not found");
+
+  const transformedAvailability = doctor.availability.map((avail) => {
+    let locationName =
+      avail.appointmentType === "online"
+        ? "Online"
+        : avail.locationName || "Unknown Location";
+    let resolvedLocationId = avail.locationId;
+
+    if (avail.appointmentType === "inclinic") {
+      if (avail.locationId) {
+        const loc = doctor.locations.find(
+          (l) => l._id.toString() === avail.locationId.toString(),
+        );
+        if (loc) locationName = loc.name;
+      } else {
+        // Try resolving resolve from Name
+        if (avail.locationName) {
+          const loc = doctor.locations.find(
+            (l) =>
+              l.name &&
+              l.name.toLowerCase() === avail.locationName.toLowerCase(),
+          );
+          if (loc) {
+            resolvedLocationId = loc._id;
+            locationName = loc.name;
+          }
+        }
+        // Fallback: If only one location exists
+        if (!resolvedLocationId && doctor.locations.length === 1) {
+          resolvedLocationId = doctor.locations[0]._id;
+          locationName = doctor.locations[0].name;
+        }
+      }
+    }
+
+    return {
+      day: avail.day,
+      startTime: avail.startTime,
+      endTime: avail.endTime,
+      appointmentType: avail.appointmentType,
+      locationId: resolvedLocationId,
+      locationName,
+    };
+  });
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        consultationTime: doctor.consultationTime,
+        availability: transformedAvailability,
+      },
+      "Doctor availability config fetched successfully",
+    ),
+  );
+});
 
 const getDoctors = async (req, res, next) => {
   try {
     const { status } = req.query;
 
-    // optional validation
-    const allowedStatuses = [
-      "pending",
-      "active",
-      "rejected",
-      "suspended",
-      "inactive",
-      "approved",
-    ];
-
-    if (status && !allowedStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid status value",
-      });
-    }
-
-    const filter = {
-      role: "doctor",
-    };
-
+    const filter = {};
     if (status) {
       filter.status = status;
     }
 
-    const doctors = await User.find(filter)
-      .select("firstName lastName email phoneNumber status doctorProfile confirmedAt")
+    // Find in Doctor collection
+    const doctors = await Doctor.find(filter)
+      .populate("userId", "whatsappnumber role -_id") // Populate user details, exclude _id duplicate
+      .populate("speciality") // Populate full speciality details including super_specialities
       .sort({ createdAt: -1 });
+
+    // Transform the response to use proper field names
+    const transformedDoctors = doctors.map((doctor) => {
+      const docObj = doctor.toObject();
+
+      // Extract services from the matching super-speciality
+      let services = [];
+      if (docObj.speciality && docObj.superSpeciality) {
+        const matchingSuperSpec = docObj.speciality.super_specialities?.find(
+          (ss) =>
+            ss.name.trim().toLowerCase() ===
+            docObj.superSpeciality.trim().toLowerCase(),
+        );
+        services = matchingSuperSpec?.services || [];
+      }
+
+      return {
+        doctorId: docObj._id,
+        userId: docObj.userId?._id,
+        whatsappnumber: docObj.userId?.whatsappnumber,
+        role: docObj.userId?.role,
+        name: docObj.name,
+        email: docObj.email,
+        emergencyContact: docObj.phone,
+        address: docObj.address,
+        speciality: docObj.speciality?.speciality || null,
+        specialityName: docObj.speciality?.speciality || null,
+        specialityId: docObj.speciality?._id || docObj.speciality || null,
+        superSpeciality: docObj.superSpeciality,
+        services: services,
+        consultationTime: docObj.consultationTime,
+        locations:
+          docObj.locations?.map((loc) => ({
+            hospitalId: loc._id,
+            name: loc.name,
+            address: loc.address,
+            phone: loc.phone,
+            coordinates: loc.coordinates,
+          })) || [],
+        availability:
+          docObj.availability?.map((avail) => {
+            let resolvedLocationId = avail.locationId;
+            if (avail.appointmentType === "inclinic" && !resolvedLocationId) {
+              if (avail.locationName) {
+                const loc = docObj.locations.find(
+                  (l) =>
+                    l.name &&
+                    l.name.toLowerCase() === avail.locationName.toLowerCase(),
+                );
+                if (loc) resolvedLocationId = loc._id;
+              }
+              if (!resolvedLocationId && docObj.locations.length === 1) {
+                resolvedLocationId = docObj.locations[0]._id;
+              }
+            }
+            return {
+              day: avail.day,
+              startTime: avail.startTime,
+              endTime: avail.endTime,
+              appointmentType: avail.appointmentType,
+              locationId: resolvedLocationId,
+            };
+          }) || [],
+        education:
+          docObj.education?.map((edu) => ({
+            degree: edu.degree,
+            institute: edu.institute,
+            startYear: edu.startYear,
+            endYear: edu.endYear,
+          })) || [],
+        isAvailable: docObj.isAvailable,
+        pmdcRegistrationNumber: docObj.pmdcRegistrationNumber,
+        status: docObj.status,
+        image: docObj.image,
+        experience: docObj.experience,
+        averageRating: docObj.averageRating,
+        numReviews: docObj.numReviews,
+        leaves: docObj.leaves,
+        completenessScore: docObj.completenessScore,
+        registrationDate: docObj.registrationDate,
+        about: docObj.about,
+        gender: docObj.gender,
+        languages: docObj.languages,
+        awards: docObj.awards,
+        memberships: docObj.memberships,
+        fees: docObj.fees,
+      };
+    });
 
     res.status(200).json({
       success: true,
-      count: doctors.length,
-      data: doctors,
+      count: transformedDoctors.length,
+      data: transformedDoctors,
     });
   } catch (error) {
     next(error);
   }
 };
 
+// Get single doctor by ID
+const getDoctorById = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new ApiError(400, "Invalid doctor ID");
+  }
+
+  const doctor = await Doctor.findById(id)
+    .populate("userId", "whatsappnumber role -_id")
+    .populate("speciality");
+
+  if (!doctor) {
+    throw new ApiError(404, "Doctor not found");
+  }
+
+  const docObj = doctor.toObject();
+
+  // Extract services from the matching super-speciality
+  let services = [];
+  if (docObj.speciality && docObj.superSpeciality) {
+    const matchingSuperSpec = docObj.speciality.super_specialities?.find(
+      (ss) =>
+        ss.name.trim().toLowerCase() ===
+        docObj.superSpeciality.trim().toLowerCase(),
+    );
+    services = matchingSuperSpec?.services || [];
+  }
+
+  const transformedDoctor = {
+    doctorId: docObj._id,
+    userId: docObj.userId?._id,
+    whatsappnumber: docObj.userId?.whatsappnumber,
+    role: docObj.userId?.role,
+    name: docObj.name,
+    email: docObj.email,
+    emergencyContact: docObj.phone,
+    address: docObj.address,
+    speciality: docObj.speciality?.speciality || null,
+    specialityName: docObj.speciality?.speciality || null,
+    specialityId: docObj.speciality?._id || docObj.speciality || null,
+    superSpeciality: docObj.superSpeciality,
+    services: services,
+    consultationTime: docObj.consultationTime,
+    locations:
+      docObj.locations?.map((loc) => ({
+        hospitalId: loc._id,
+        name: loc.name,
+        address: loc.address,
+        phone: loc.phone,
+        coordinates: loc.coordinates,
+      })) || [],
+    availability:
+      docObj.availability?.map((avail) => {
+        let resolvedLocationId = avail.locationId;
+        if (avail.appointmentType === "inclinic" && !resolvedLocationId) {
+          if (avail.locationName) {
+            const loc = docObj.locations.find(
+              (l) =>
+                l.name &&
+                l.name.toLowerCase() === avail.locationName.toLowerCase(),
+            );
+            if (loc) resolvedLocationId = loc._id;
+          }
+          if (!resolvedLocationId && docObj.locations.length === 1) {
+            resolvedLocationId = docObj.locations[0]._id;
+          }
+        }
+        return {
+          day: avail.day,
+          startTime: avail.startTime,
+          endTime: avail.endTime,
+          appointmentType: avail.appointmentType,
+          locationId: resolvedLocationId,
+        };
+      }) || [],
+    education:
+      docObj.education?.map((edu) => ({
+        degree: edu.degree,
+        institute: edu.institute,
+        startYear: edu.startYear,
+        endYear: edu.endYear,
+      })) || [],
+    isAvailable: docObj.isAvailable,
+    pmdcRegistrationNumber: docObj.pmdcRegistrationNumber,
+    status: docObj.status,
+    image: docObj.image,
+    experience: docObj.experience,
+    averageRating: docObj.averageRating,
+    numReviews: docObj.numReviews,
+    leaves: docObj.leaves,
+    completenessScore: docObj.completenessScore,
+    registrationDate: docObj.registrationDate,
+    about: docObj.about,
+    gender: docObj.gender,
+    languages: docObj.languages,
+    awards: docObj.awards,
+    memberships: docObj.memberships,
+    fees: docObj.fees,
+  };
+
+  res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        transformedDoctor,
+        "Doctor details fetched successfully",
+      ),
+    );
+});
+
+// Search doctors by name and/or speciality
+const searchDoctors = asyncHandler(async (req, res) => {
+  const { search, specialityId, city } = req.query;
+
+  // Validate search query (minimum 3 characters)
+  if (search && search.length < 3) {
+    throw new ApiError(400, "Search query must be at least 3 characters");
+  }
+
+  const filter = { status: "approved" }; // Only search approved doctors
+
+  // Add name search filter (case-insensitive)
+  if (search) {
+    filter.name = { $regex: search, $options: "i" };
+  }
+
+  // Add speciality filter
+  if (specialityId) {
+    filter.speciality = specialityId;
+  }
+
+  // Add city filter (case-insensitive)
+  if (city) {
+    filter["address.city"] = { $regex: city, $options: "i" };
+  }
+
+  const doctors = await Doctor.find(filter)
+    .populate("userId", "whatsappnumber role -_id")
+    .populate("speciality")
+    .sort({ name: 1 });
+
+  // Transform the response
+  const transformedDoctors = doctors.map((doctor) => {
+    const docObj = doctor.toObject();
+
+    let services = [];
+    if (docObj.speciality && docObj.superSpeciality) {
+      const matchingSuperSpec = docObj.speciality.super_specialities?.find(
+        (ss) =>
+          ss.name.trim().toLowerCase() ===
+          docObj.superSpeciality.trim().toLowerCase(),
+      );
+      services = matchingSuperSpec?.services || [];
+    }
+
+    return {
+      doctorId: docObj._id,
+      userId: docObj.userId?._id,
+      whatsappnumber: docObj.userId?.whatsappnumber,
+      role: docObj.userId?.role,
+      name: docObj.name,
+      email: docObj.email,
+      emergencyContact: docObj.phone,
+      address: docObj.address,
+      speciality: docObj.speciality?.speciality || null,
+      specialityName: docObj.speciality?.speciality || null,
+      specialityId: docObj.speciality?._id || docObj.speciality || null,
+      superSpeciality: docObj.superSpeciality,
+      services: services,
+      consultationTime: docObj.consultationTime,
+      locations:
+        docObj.locations?.map((loc) => ({
+          hospitalId: loc._id,
+          name: loc.name,
+          address: loc.address,
+          phone: loc.phone,
+          coordinates: loc.coordinates,
+        })) || [],
+      availability:
+        docObj.availability?.map((avail) => {
+          let resolvedLocationId = avail.locationId;
+          if (avail.appointmentType === "inclinic" && !resolvedLocationId) {
+            if (avail.locationName) {
+              const loc = docObj.locations.find(
+                (l) =>
+                  l.name &&
+                  l.name.toLowerCase() === avail.locationName.toLowerCase(),
+              );
+              if (loc) resolvedLocationId = loc._id;
+            }
+            if (!resolvedLocationId && docObj.locations.length === 1) {
+              resolvedLocationId = docObj.locations[0]._id;
+            }
+          }
+          return {
+            day: avail.day,
+            startTime: avail.startTime,
+            endTime: avail.endTime,
+            appointmentType: avail.appointmentType,
+            locationId: resolvedLocationId,
+          };
+        }) || [],
+      education:
+        docObj.education?.map((edu) => ({
+          degree: edu.degree,
+          institute: edu.institute,
+          startYear: edu.startYear,
+          endYear: edu.endYear,
+        })) || [],
+      isAvailable: docObj.isAvailable,
+      pmdcRegistrationNumber: docObj.pmdcRegistrationNumber,
+      status: docObj.status,
+      image: docObj.image,
+      experience: docObj.experience,
+      averageRating: docObj.averageRating,
+      numReviews: docObj.numReviews,
+      leaves: docObj.leaves,
+      completenessScore: docObj.completenessScore,
+      registrationDate: docObj.registrationDate,
+      fees: docObj.fees,
+    };
+  });
+
+  res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        { count: transformedDoctors.length, doctors: transformedDoctors },
+        "Search results fetched successfully",
+      ),
+    );
+});
+
+// Get unique cities for lookup
+const getCities = asyncHandler(async (req, res) => {
+  const cities = await Doctor.distinct("address.city", {
+    status: "approved",
+    "address.city": { $ne: null, $ne: "" },
+  });
+
+  // Sort alphabetically
+  const sortedCities = cities.sort((a, b) => a.localeCompare(b));
+
+  res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        { count: sortedCities.length, cities: sortedCities },
+        "Cities fetched successfully",
+      ),
+    );
+});
+
+// Admin-only: Create single doctor account + profile
+const createDoctorByAdmin = asyncHandler(async (req, res) => {
+  const {
+    whatsappnumber,
+    password,
+    name,
+    email,
+    emergencyContact,
+    address,
+    pmdcRegistrationNumber,
+    specialityId,
+    superSpeciality,
+    consultationTime,
+    locations,
+    availability,
+    education,
+    experience,
+    image,
+    status,
+  } = req.body;
+
+  if (
+    !whatsappnumber ||
+    !password ||
+    !name ||
+    !email ||
+    !pmdcRegistrationNumber
+  ) {
+    throw new ApiError(
+      400,
+      "WhatsApp number, password, name, email, and PMDC number are required",
+    );
+  }
+
+  const existingUser = await User.findOne({ whatsappnumber });
+  if (existingUser)
+    throw new ApiError(400, "User with this WhatsApp number already exists");
+
+  const existingDoctor = await Doctor.findOne({ email });
+  if (existingDoctor)
+    throw new ApiError(400, "Doctor with this email already exists");
+
+  if (specialityId) {
+    const specialityExists = await Speciality.findById(specialityId);
+    if (!specialityExists) throw new ApiError(400, "Invalid speciality ID");
+
+    if (superSpeciality) {
+      const trimmedSuperSpec = superSpeciality.trim();
+      const validSuperSpeciality = specialityExists.super_specialities.find(
+        (ss) => ss.name.trim().toLowerCase() === trimmedSuperSpec.toLowerCase(),
+      );
+
+      if (!validSuperSpeciality) {
+        const validOptions = specialityExists.super_specialities
+          .map((ss) => ss.name)
+          .join(", ");
+        throw new ApiError(
+          400,
+          `Invalid super speciality "${trimmedSuperSpec}" for ${specialityExists.speciality}. Available: ${validOptions}`,
+        );
+      }
+    }
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  const newUser = await User.create({
+    whatsappnumber,
+    password: hashedPassword,
+    role: "doctor",
+    isVerified: true,
+  });
+
+  const newDoctor = await Doctor.create({
+    userId: newUser._id,
+    name,
+    email,
+    phone: emergencyContact || whatsappnumber,
+    address,
+    pmdcRegistrationNumber,
+    speciality: specialityId,
+    superSpeciality,
+    consultationTime: consultationTime || 15,
+    locations: locations || [],
+    availability: [],
+    education: education || [],
+    experience: experience || 0,
+    image,
+    status: status || "approved",
+  });
+
+  // Now process availability with resolved IDs
+  if (availability && availability.length > 0) {
+    const processedAvailability = availability.map((avail) => {
+      let resolvedLocationId = avail.locationId;
+      if (avail.appointmentType === "inclinic" && !resolvedLocationId) {
+        if (avail.locationName) {
+          const matchedLoc = newDoctor.locations.find(
+            (loc) =>
+              loc.name &&
+              loc.name.toLowerCase() === avail.locationName.toLowerCase(),
+          );
+          if (matchedLoc) resolvedLocationId = matchedLoc._id;
+        }
+        // Fallback: default to single location
+        if (!resolvedLocationId && newDoctor.locations.length === 1) {
+          resolvedLocationId = newDoctor.locations[0]._id;
+        }
+      }
+      return { ...avail, locationId: resolvedLocationId };
+    });
+    newDoctor.availability = processedAvailability;
+    await newDoctor.save();
+  }
+
+  res.status(201).json(
+    new ApiResponse(
+      201,
+      {
+        userId: newUser._id,
+        doctorId: newDoctor._id,
+        name: newDoctor.name,
+        email: newDoctor.email,
+        status: newDoctor.status,
+      },
+      "Doctor account created successfully",
+    ),
+  );
+
+  // Broadcast update to admins if needed
+  if (newDoctor.status === "pending") {
+    refreshAdminStats(req);
+  }
+});
+
+// Admin-only: Bulk create doctors (accepts array)
+const bulkCreateDoctors = asyncHandler(async (req, res) => {
+  const doctors = req.body;
+
+  if (!Array.isArray(doctors) || doctors.length === 0) {
+    throw new ApiError(400, "Please provide an array of doctor objects");
+  }
+
+  const results = { success: [], failed: [] };
+
+  for (let i = 0; i < doctors.length; i++) {
+    const doctor = doctors[i];
+    try {
+      const {
+        whatsappnumber,
+        password,
+        name,
+        email,
+        emergencyContact,
+        address,
+        pmdcRegistrationNumber,
+        specialityId,
+        superSpeciality,
+        consultationTime,
+        locations,
+        availability,
+        education,
+        experience,
+        image,
+        status,
+      } = doctor;
+
+      if (
+        !whatsappnumber ||
+        !password ||
+        !name ||
+        !email ||
+        !pmdcRegistrationNumber
+      )
+        throw new Error("Missing required fields");
+
+      const existingUser = await User.findOne({ whatsappnumber });
+      if (existingUser) throw new Error("WhatsApp number already exists");
+
+      const existingDoctor = await Doctor.findOne({ email });
+      if (existingDoctor) throw new Error("Email already exists");
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const newUser = await User.create({
+        whatsappnumber,
+        password: hashedPassword,
+        role: "doctor",
+        isVerified: true,
+      });
+
+      const newDoctor = await Doctor.create({
+        userId: newUser._id,
+        name,
+        email,
+        phone: emergencyContact || whatsappnumber,
+        address,
+        pmdcRegistrationNumber,
+        speciality: specialityId,
+        superSpeciality,
+        consultationTime: consultationTime || 15,
+        locations: locations || [],
+        availability: [],
+        education: education || [],
+        experience: experience || 0,
+        image,
+        status: status || "approved",
+      });
+
+      // Process availability to link location IDs
+      if (availability && availability.length > 0) {
+        const processedAvailability = availability.map((avail) => {
+          let resolvedLocationId = avail.locationId;
+          if (avail.appointmentType === "inclinic" && !resolvedLocationId) {
+            if (avail.locationName) {
+              const matchedLoc = newDoctor.locations.find(
+                (loc) =>
+                  loc.name &&
+                  loc.name.toLowerCase() === avail.locationName.toLowerCase(),
+              );
+              if (matchedLoc) resolvedLocationId = matchedLoc._id;
+            }
+            // Fallback: default to single location
+            if (!resolvedLocationId && newDoctor.locations.length === 1) {
+              resolvedLocationId = newDoctor.locations[0]._id;
+            }
+          }
+          return { ...avail, locationId: resolvedLocationId };
+        });
+        newDoctor.availability = processedAvailability;
+        await newDoctor.save();
+      }
+
+      results.success.push({
+        index: i,
+        userId: newUser._id,
+        doctorId: newDoctor._id,
+        name: newDoctor.name,
+        email: newDoctor.email,
+      });
+    } catch (error) {
+      results.failed.push({
+        index: i,
+        email: doctor.email,
+        error: error.message,
+      });
+    }
+  }
+
+  res
+    .status(201)
+    .json(
+      new ApiResponse(
+        201,
+        results,
+        `Created ${results.success.length} doctors, ${results.failed.length} failed`,
+      ),
+    );
+
+  // Broadcast update to admins if any success
+  if (results.success.length > 0) {
+    refreshAdminStats(req);
+  }
+});
+
+/**
+ * Controller to handle doctor image upload to Cloudflare R2
+ */
+const uploadDoctorImage = asyncHandler(async (req, res) => {
+  const { doctorId } = req.body; // Optional: Admins can specify doctorId
+
+  if (!req.file) {
+    throw new ApiError(400, "No image file provided");
+  }
+
+  let doctor;
+  if (req.user.role === "admin" && doctorId) {
+    doctor = await Doctor.findById(doctorId);
+  } else {
+    doctor = await Doctor.findOne({ userId: req.user._id });
+  }
+
+  if (!doctor) {
+    throw new ApiError(404, "Doctor profile not found");
+  }
+
+  // If doctor already has an image, delete the old one from R2
+  if (doctor.image) {
+    console.log("Cleanup: Deleting old image...");
+    await deleteFromR2(doctor.image);
+  }
+
+  // Upload to R2
+  const imageUrl = await uploadToR2(req.file.buffer, req.file.originalname, req.file.mimetype);
+
+  // Update doctor profile with the new image URL
+  doctor.image = imageUrl;
+  await doctor.save();
+
+  res.status(200).json(
+    new ApiResponse(200, { imageUrl }, "Doctor image uploaded successfully")
+  );
+});
+
+const getMe = asyncHandler(async (req, res) => {
+  const doctor = await Doctor.findOne({ userId: req.user._id });
+  if (!doctor) {
+    throw new ApiError(404, "Doctor profile not found");
+  }
+  res.status(200).json(new ApiResponse(200, doctor, "Doctor profile fetched successfully"));
+});
+
+/**
+ * Controller to handle doctor image upload to Cloudflare R2
+ */
+
+
 module.exports = {
-  registerDoctor,
   updateStatus,
-  confirmDoctor,
-  getDoctors
+  approveDoctor,
+  getDoctors,
+  getDoctorById,
+  searchDoctors,
+  getCities,
+  updateDoctorProfile,
+  getAvailableSlots,
+  getDoctorAvailabilityConfig,
+  addLeave,
+  removeLeave,
+  suggestSpeciality,
+  createDoctorByAdmin,
+  bulkCreateDoctors,
+  uploadDoctorImage,
+  getPendingCount,
+  getMe,
 };

@@ -4,21 +4,22 @@ const mongoose = require("mongoose");
 const appointmentSchema = new mongoose.Schema({
   doctorId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    required: true
-  },
-  department: {
-    type: String,
+    ref: "Doctor", // Points to the profile collection
     required: true
   },
   patientId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    required: true
+    ref: "User", // Points to User model
+    required: false // Optional for guest booking
+  },
+  patientPhone: {
+    type: String,
+    required: function () { return !this.patientId; }, // Required for guest, optional if logged in (linked via patientId)
+    trim: true
   },
   patientName: {
     type: String,
-    required: false
+    required: function () { return !this.patientId; } // Required for guests, optional if logged in
   },
   patientEmail: {
     type: String,
@@ -31,7 +32,10 @@ const appointmentSchema = new mongoose.Schema({
   timeSlot: {
     type: String,
     required: true,
-    enum: ['09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00']
+  },
+  locationName: {
+    type: String,
+    required: false
   },
   appointmentType: {
     type: String,
@@ -45,8 +49,13 @@ const appointmentSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ["booked", "completed", "cancelled"],
+    enum: ["booked", "confirmed", "completed", "cancelled"],
     default: "booked"
+  },
+  paymentStatus: {
+    type: String,
+    enum: ["pending", "paid", "failed"],
+    default: "pending"
   },
   isDeleted: {
     type: Boolean,

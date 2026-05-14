@@ -2,20 +2,20 @@ const express = require("express");
 const router = express.Router();
 
 const {
-  createUser,
+  register,
+  verifyOtp,
   login,
-  googleLogin,
   refreshAccessToken,
   logoutUser,
-} = require("../controllers/userController");
+} = require("../controllers/authController");
 
 // const { verifyJWT } = require("../middlewares/auth.middleware");
 
 // Routes
-router.post("/register", createUser);
+router.post("/register", register);
+router.post('/verify-otp', verifyOtp);
 router.post("/login", login);
-router.post("/google-login", googleLogin);
-// router.post("/refresh-token", refreshAccessToken);
+router.post("/refresh-token", refreshAccessToken);
 // router.post("/logout", verifyJWT, logoutUser);
 
 module.exports = router;
