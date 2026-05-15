@@ -32,7 +32,7 @@ const isTruthyQuery = (value) =>
 const applyUpcomingFilter = (filter) => {
   const now = getPakistanDateTime();
 
-  filter.status = "confirmed";
+  filter.status = { $in: ['booked', 'confirmed'] };
   filter.$or = [
     { date: { $gt: now.date } },
     { date: now.date, timeSlot: { $gte: now.time } },
