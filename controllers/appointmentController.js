@@ -18,7 +18,9 @@ const getPakistanDateTime = () => {
     hour12: false,
   }).formatToParts(new Date());
 
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
 
   return {
     date: `${values.year}-${values.month}-${values.day}`,
@@ -32,7 +34,7 @@ const isTruthyQuery = (value) =>
 const applyUpcomingFilter = (filter) => {
   const now = getPakistanDateTime();
 
-  filter.status = "confirmed";
+  filter.status = { $in: ["booked", "confirmed"] };
   filter.$or = [
     { date: { $gt: now.date } },
     { date: now.date, timeSlot: { $gte: now.time } },
@@ -52,17 +54,21 @@ const bookAppointment = asyncHandler(async (req, res) => {
     reason,
     patientName, // for guests
     patientPhone, // for guests
-    patientEmail // optional for guests
+    patientEmail, // optional for guests
   } = req.body;
 
   if (!doctorId || !date || !timeSlot || !appointmentType) {
-    throw new ApiError(400, "Please provide all required fields (doctorId, date, timeSlot, appointmentType)");
+    throw new ApiError(
+      400,
+      "Please provide all required fields (doctorId, date, timeSlot, appointmentType)",
+    );
   }
 
   // 1. Check if doctor exists and is approved
   const doctor = await Doctor.findById(doctorId);
   if (!doctor) throw new ApiError(404, "Doctor not found");
-  if (doctor.status !== 'approved') throw new ApiError(400, "Doctor is not currently available for booking");
+  if (doctor.status !== "approved")
+    throw new ApiError(400, "Doctor is not currently available for booking");
 
   // Prevent booking for past dates
   const searchDate = new Date(date).setHours(0, 0, 0, 0);
@@ -72,15 +78,21 @@ const bookAppointment = asyncHandler(async (req, res) => {
   }
 
   // 2. Validate session exists in doctor's availability
-  const dayOfWeek = new Date(date).toLocaleDateString('en-US', { weekday: 'long' });
-  const matchingSession = doctor.availability.find(s =>
-    s.day === dayOfWeek &&
-    s.appointmentType === appointmentType &&
-    (!locationId || s.locationId?.toString() === locationId)
+  const dayOfWeek = new Date(date).toLocaleDateString("en-US", {
+    weekday: "long",
+  });
+  const matchingSession = doctor.availability.find(
+    (s) =>
+      s.day === dayOfWeek &&
+      s.appointmentType === appointmentType &&
+      (!locationId || s.locationId?.toString() === locationId),
   );
 
   if (!matchingSession) {
-    throw new ApiError(400, `Doctor does not have ${appointmentType} sessions on ${dayOfWeek}`);
+    throw new ApiError(
+      400,
+      `Doctor does not have ${appointmentType} sessions on ${dayOfWeek}`,
+    );
   }
 
   // 3. Prevent double booking for the same doctor, date, and slot
@@ -91,7 +103,7 @@ const bookAppointment = asyncHandler(async (req, res) => {
     doctorId,
     date,
     timeSlot: timeSlot24h,
-    status: { $in: ['booked', 'confirmed'] } // Also check for confirmed status
+    status: { $in: ["booked", "confirmed"] }, // Also check for confirmed status
   });
 
   if (existingAppointment) {
@@ -106,7 +118,7 @@ const bookAppointment = asyncHandler(async (req, res) => {
     appointmentType,
     locationName: matchingSession.locationName,
     reason,
-    status: 'booked'
+    status: "booked",
   };
 
   if (req.user) {
@@ -140,9 +152,9 @@ const bookAppointment = asyncHandler(async (req, res) => {
 
   const appointment = await Appointment.create(appointmentData);
 
-  res.status(201).json(
-    new ApiResponse(201, appointment, "Appointment booked successfully")
-  );
+  res
+    .status(201)
+    .json(new ApiResponse(201, appointment, "Appointment booked successfully"));
 });
 
 // @desc    Get logged in user's appointments
@@ -151,22 +163,31 @@ const bookAppointment = asyncHandler(async (req, res) => {
 const getMyAppointments = asyncHandler(async (req, res) => {
   const filter = {};
 
-  if (req.user.role === 'patient') {
+  if (req.user.role === "patient") {
     filter.patientId = req.user._id;
-  } else if (req.user.role === 'doctor') {
+  } else if (req.user.role === "doctor") {
     // Find the doctor profile first
     const doctor = await Doctor.findOne({ userId: req.user._id });
     if (!doctor) throw new ApiError(404, "Doctor profile not found");
     filter.doctorId = doctor._id;
   }
 
+  const upcomingOnly =
+    isTruthyQuery(req.query.upcoming) || isTruthyQuery(req.query.upcomming);
+
+  if (upcomingOnly) {
+    applyUpcomingFilter(filter);
+  }
+
   const appointments = await Appointment.find(filter)
-    .populate('doctorId', 'name speciality')
+    .populate("doctorId", "name speciality")
     .sort({ date: -1, timeSlot: -1 });
 
-  res.status(200).json(
-    new ApiResponse(200, appointments, "Appointments fetched successfully")
-  );
+  res
+    .status(200)
+    .json(
+      new ApiResponse(200, appointments, "Appointments fetched successfully"),
+    );
 });
 
 // @desc    Get logged in patient's appointments
@@ -186,22 +207,25 @@ const getPatientAppointments = asyncHandler(async (req, res) => {
   }
 
   const appointments = await Appointment.find(filter)
-    .populate('doctorId', 'name speciality')
+    .populate("doctorId", "name speciality")
     .sort(upcomingOnly ? { date: 1, timeSlot: 1 } : { date: -1, timeSlot: -1 });
 
-  res.status(200).json(
-    new ApiResponse(200, appointments, "Patient appointments fetched successfully")
-  );
+  res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        appointments,
+        "Patient appointments fetched successfully",
+      ),
+    );
 });
 
 // @desc    Get logged in doctor's appointments
 // @route   GET /api/appointments/doctor
 // @access  Private
-// @desc    Get logged in doctor's appointments
-// @route   GET /api/appointments/doctor
-// @access  Private
 const getLoggedInDoctorAppointments = asyncHandler(async (req, res) => {
-  if (req.user.role !== 'doctor') {
+  if (req.user.role !== "doctor") {
     throw new ApiError(403, "Access denied. Doctors only.");
   }
 
@@ -220,30 +244,24 @@ const getLoggedInDoctorAppointments = asyncHandler(async (req, res) => {
     // FIX: Compare string dates since your DB stores dates as strings
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const todayString = today.toISOString().split('T')[0]; // "2026-05-13"
-    
+    const todayString = today.toISOString().split("T")[0]; // "2026-05-13"
+
     filter.date = { $gte: todayString };
-    
+
     // Keep original function call
     applyUpcomingFilter(filter);
   }
 
   const appointments = await Appointment.find(filter)
-    .populate('patientId', 'name email whatsappnumber')
-    .sort(
-      upcomingOnly
-        ? { date: 1, timeSlot: 1 }
-        : { date: -1, timeSlot: -1 }
-    );
+    .populate("patientId", "name email whatsappnumber")
+    .sort(upcomingOnly ? { date: 1, timeSlot: 1 } : { date: -1, timeSlot: -1 });
 
   const formattedAppointments = appointments.map((appointment) => ({
     ...appointment.toObject(),
 
-    patientName:
-      appointment.patientId?.name || appointment.patientName,
+    patientName: appointment.patientId?.name || appointment.patientName,
 
-    patientEmail:
-      appointment.patientId?.email || appointment.patientEmail,
+    patientEmail: appointment.patientId?.email || appointment.patientEmail,
 
     patientPhone:
       appointment.patientId?.whatsappnumber || appointment.patientPhone,
@@ -251,19 +269,15 @@ const getLoggedInDoctorAppointments = asyncHandler(async (req, res) => {
     isGuest: !appointment.patientId,
   }));
 
-  res.status(200).json(
-    new ApiResponse(
-      200,
-<<<<<<< HEAD
-      appointmentsWithDetails,
-      "Patient appointments fetched",
-    ),
-=======
-      formattedAppointments,
-      "Doctor appointments fetched successfully"
-    )
->>>>>>> 71b9dc04c6a0e7f8c4396e2330e93bdc0be13131
-  );
+  res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        formattedAppointments,
+        "Doctor appointments fetched successfully",
+      ),
+    );
 });
 
 // @desc    Update appointment status (Cancel/Complete)
@@ -273,17 +287,8 @@ const updateAppointmentStatus = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
-<<<<<<< HEAD
-  const validStatuses = ["booked", "completed", "cancelled"];
-  if (!validStatuses.includes(status)) {
-    throw new ApiError(
-      400,
-      `Invalid status. Valid statuses: ${validStatuses.join(", ")}`,
-    );
-=======
-  if (!['booked', 'completed', 'cancelled'].includes(status)) {
+  if (!["booked", "completed", "cancelled"].includes(status)) {
     throw new ApiError(400, "Invalid status");
->>>>>>> 71b9dc04c6a0e7f8c4396e2330e93bdc0be13131
   }
 
   const appointment = await Appointment.findById(id);
@@ -295,14 +300,17 @@ const updateAppointmentStatus = asyncHandler(async (req, res) => {
   appointment.status = status;
   await appointment.save();
 
-  res.status(200).json(
-    new ApiResponse(200, appointment, `Appointment status updated to ${status}`)
-  );
+  res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        appointment,
+        `Appointment status updated to ${status}`,
+      ),
+    );
 });
 
-// @desc    Get all appointments for a specific doctor
-// @route   GET /api/appointments/doctor/:doctorId
-// @access  Private (Admin or the Doctor themselves)
 // @desc    Get all appointments for a specific doctor
 // @route   GET /api/appointments/doctor/:doctorId
 // @access  Private (Admin or the Doctor themselves)
@@ -310,17 +318,15 @@ const getDoctorAppointments = asyncHandler(async (req, res) => {
   const { doctorId } = req.params;
 
   const appointments = await Appointment.find({ doctorId })
-    .populate('patientId', 'name email whatsappnumber')
+    .populate("patientId", "name email whatsappnumber")
     .sort({ date: -1, timeSlot: -1 });
 
   const formattedAppointments = appointments.map((appointment) => ({
     ...appointment.toObject(),
 
-    patientName:
-      appointment.patientId?.name || appointment.patientName,
+    patientName: appointment.patientId?.name || appointment.patientName,
 
-    patientEmail:
-      appointment.patientId?.email || appointment.patientEmail,
+    patientEmail: appointment.patientId?.email || appointment.patientEmail,
 
     patientPhone:
       appointment.patientId?.whatsappnumber || appointment.patientPhone,
@@ -328,13 +334,15 @@ const getDoctorAppointments = asyncHandler(async (req, res) => {
     isGuest: !appointment.patientId,
   }));
 
-  res.status(200).json(
-    new ApiResponse(
-      200,
-      formattedAppointments,
-      "Doctor appointments fetched successfully"
-    )
-  );
+  res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        formattedAppointments,
+        "Doctor appointments fetched successfully",
+      ),
+    );
 });
 
 module.exports = {
@@ -343,5 +351,5 @@ module.exports = {
   getPatientAppointments,
   getLoggedInDoctorAppointments,
   updateAppointmentStatus,
-  getDoctorAppointments
+  getDoctorAppointments,
 };

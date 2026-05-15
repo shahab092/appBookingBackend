@@ -17,6 +17,9 @@ router.post("/", verifyOptionalJWT, bookAppointment);
 // All following routes require strict authentication
 router.use(verifyJWT);
 
+// GET /api/appointments - Get user's appointments (Alias for /my)
+router.get("/", getMyAppointments);
+
 // GET /api/appointments/my - Get user's appointments
 router.get("/my", getMyAppointments);
 
