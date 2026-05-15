@@ -28,7 +28,7 @@ const authLimiter = rateLimit({
 });
 
 // Middleware
-app.use(express.json()); // parse JSON
+app.use(express.json({ limit: '10mb' })); // parse JSON
 app.use(
   cors({
     origin: [
@@ -43,11 +43,6 @@ app.use(
 );
 
 // Routes
-app.use((req, res, next) => {
-  console.log(`${req.method} ${req.url}`);
-  next();
-});
-
 app.use("/api/auth", authLimiter, require("./routes/users.js"));
 app.use("/api/doctor", doctorRoute);
 app.use("/api/appointments", appointmentRoute);
@@ -89,10 +84,10 @@ const startServer = async () => {
   try {
     await connectDB(); // connect to DB
     server.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`Server running on port ${PORT}`);
     });
   } catch (err) {
-    console.error("❌ Failed to start server:", err);
+    console.error("Failed to start server:", err);
   }
 };
 

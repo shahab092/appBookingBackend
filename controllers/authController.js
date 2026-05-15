@@ -131,6 +131,7 @@ const verifyOtp = asyncHandler(async (req, res) => {
 
 // Login User
 const login = asyncHandler(async (req, res) => {
+  console.log('Login request body:', req.body);
   const { whatsappnumber, password } = req.body;
   if (!whatsappnumber || !password) throw new ApiError(400, "WhatsApp number and password are required");
 
