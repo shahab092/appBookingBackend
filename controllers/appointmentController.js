@@ -220,17 +220,17 @@ const getLoggedInDoctorAppointments = asyncHandler(async (req, res) => {
     // DEBUG: Log to see what's happening
     console.log('Upcoming filter enabled');
     console.log('Doctor ID:', doctor._id);
-    
+
     // Get today's date in YYYY-MM-DD format
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayString = today.toISOString().split('T')[0];
-    
+
     console.log('Today string:', todayString);
-    
+
     // Add date filter
     filter.date = { $gte: todayString };
-    
+
     // Keep original function call
     if (typeof applyUpcomingFilter === 'function') {
       applyUpcomingFilter(filter);
@@ -304,12 +304,7 @@ const updateAppointmentStatus = asyncHandler(async (req, res) => {
   );
 });
 
-// @desc    Get all appointments for a specific doctor
-// @route   GET /api/appointments/doctor/:doctorId
-// @access  Private (Admin or the Doctor themselves)
-// @desc    Get all appointments for a specific doctor
-// @route   GET /api/appointments/doctor/:doctorId
-// @access  Private (Admin or the Doctor themselves)
+
 const getDoctorAppointments = asyncHandler(async (req, res) => {
   const { doctorId } = req.params;
 
