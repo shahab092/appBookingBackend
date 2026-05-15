@@ -31,40 +31,32 @@ const VALID_DAYS = [
 
 // Helper to calculate completeness score
 const calculateCompleteness = (doctor) => {
-  const weights = {
-    speciality: 20,
-    locations: 20,
-    availability: 20,
-    education: 15,
-    image: 10,
-    experience: 10,
-    pmdcRegistrationNumber: 5,
-    about: 5,
-    gender: 2,
-    languages: 2,
-    fees: 1,
+  const requirements = [
+    { key: "speciality", label: "Medical Speciality", weight: 20, check: (d) => !!d.speciality },
+    { key: "locations", label: "Clinic Locations", weight: 20, check: (d) => d.locations?.length > 0 },
+    { key: "availability", label: "Availability Schedule", weight: 20, check: (d) => d.availability?.length > 0 },
+    { key: "education", label: "Education & Degrees", weight: 15, check: (d) => hasValidEducation(d.education) },
+    { key: "image", label: "Profile Picture", weight: 10, check: (d) => !!d.image },
+    { key: "experience", label: "Years of Experience", weight: 5, check: (d) => (d.experience || 0) > 0 },
+    { key: "pmdc", label: "PMDC Registration", weight: 5, check: (d) => !!d.pmdcRegistrationNumber },
+    { key: "about", label: "Professional Biography", weight: 5, check: (d) => !!d.about },
+  ];
+
+  const details = requirements.map(req => ({
+    key: req.key,
+    label: req.label,
+    weight: req.weight,
+    isCompleted: req.check(doctor)
+  }));
+
+  const score = details.reduce((acc, curr) => acc + (curr.isCompleted ? curr.weight : 0), 0);
+  const missing = details.filter(d => !d.isCompleted).map(d => ({ label: d.label, weight: d.weight }));
+
+  return {
+    score: Math.min(score, 100),
+    missing,
+    breakdown: details.map(({ key, label, isCompleted }) => ({ key, label, isCompleted }))
   };
-
-  let score = 0;
-  if (doctor.speciality) score += weights.speciality;
-  if (doctor.locations?.length > 0) score += weights.locations;
-  if (doctor.availability?.length > 0) score += weights.availability;
-  if (doctor.education?.length > 0) {
-    const hasValidEducation = doctor.education.every(
-      (edu) => edu.degree && edu.institute && edu.startYear && edu.endYear,
-    );
-    if (hasValidEducation) score += weights.education;
-  }
-  if (doctor.image) score += weights.image;
-  if (doctor.experience > 0) score += weights.experience;
-  if (doctor.pmdcRegistrationNumber) score += weights.pmdcRegistrationNumber;
-  if (doctor.about) score += weights.about;
-  if (doctor.gender) score += weights.gender;
-  if (doctor.languages?.length > 0) score += weights.languages;
-  if (doctor.fees?.online > 0 || doctor.fees?.inclinic > 0)
-    score += weights.fees;
-
-  return Math.min(score, 100);
 };
 
 const hasValidEducation = (education = []) =>
@@ -561,43 +553,54 @@ const updateDoctorProfile = asyncHandler(async (req, res) => {
    if (fees) doctor.fees = fees;
 
    // Update completeness score
-   doctor.completenessScore = calculateCompleteness(doctor);
+   const completenessData = calculateCompleteness(doctor);
+   doctor.completenessScore = completenessData.score;
 
    // Detect if critical fields that require admin re-approval were changed
    const criticalFieldsChanged =
      (name !== undefined && name !== original.name) ||
      (pmdcRegistrationNumber !== undefined && pmdcRegistrationNumber !== original.pmdcRegistrationNumber) ||
      (education !== undefined && JSON.stringify(education) !== original.education);
-     // userId is not updatable via this endpoint, but included for completeness
 
-   // Check for mandatory fields to determine status.
-   const isMandatoryFilled =
-     Boolean(doctor.name) &&
-     Boolean(doctor.pmdcRegistrationNumber) &&
-     doctor.availability &&
-     doctor.availability.length > 0 &&
-     hasValidEducation(doctor.education);
+   // Status Logic: Determine if profile is "Complete Enough" for Admin Review
+   // Mandatory: Specialty, Availability, PMDC, Education
+   const mandatoryKeys = ["speciality", "availability", "pmdc", "education"];
+   const isMandatoryFilled = completenessData.breakdown
+     .filter((b) => mandatoryKeys.includes(b.key))
+     .every((b) => b.isCompleted);
 
    if (!isMandatoryFilled) {
      doctor.status = "incomplete";
-   } else if (doctor.status === "incomplete") {
-     // If it was incomplete and now mandatory fields are filled, set back to pending
-     doctor.status = "pending";
-   } else if (req.user.role === "doctor" && doctor.status === "inprogress" && criticalFieldsChanged) {
-     // If doctor updates critical fields while admin is reviewing, revert to pending for re-review
-     doctor.status = "pending";
+   } else {
+     // If it was incomplete and now mandatory is filled, OR critical fields changed while in-progress
+     if (doctor.status === "incomplete") {
+       doctor.status = "pending";
+     } else if (
+       req.user.role === "doctor" &&
+       doctor.status === "inprogress" &&
+       criticalFieldsChanged
+     ) {
+       doctor.status = "pending";
+     }
    }
 
-  await doctor.save();
+   await doctor.save();
 
-  // Broadcast update to admins if status became pending
-  if (doctor.status === "pending") {
-    refreshAdminStats(req);
-  }
+   // Broadcast update to admins if status became pending
+   if (doctor.status === "pending") {
+     refreshAdminStats(req);
+   }
 
-  res
-    .status(200)
-    .json(new ApiResponse(200, doctor, "Profile updated successfully"));
+   res.status(200).json(
+     new ApiResponse(
+       200,
+       {
+         ...doctor.toObject(),
+         completeness: completenessData,
+       },
+       "Profile updated successfully",
+     ),
+   );
 });
 
 // Manage Leaves
@@ -1569,7 +1572,19 @@ const getMe = asyncHandler(async (req, res) => {
   if (!doctor) {
     throw new ApiError(404, "Doctor profile not found");
   }
-  res.status(200).json(new ApiResponse(200, doctor, "Doctor profile fetched successfully"));
+
+  const completeness = calculateCompleteness(doctor);
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        ...doctor.toObject(),
+        completeness,
+      },
+      "Doctor profile fetched successfully",
+    ),
+  );
 });
 
 /**
