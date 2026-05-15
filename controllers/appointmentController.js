@@ -95,22 +95,8 @@ const bookAppointment = asyncHandler(async (req, res) => {
     );
   }
 
-  // 3. Prevent double booking for the same doctor, date, and slot
-  // Standardize the timeSlot to 24h format for both query and storage
+  // 3. Prepare patient data (Logged in or Guest)
   const timeSlot24h = convertTo24Hour(timeSlot);
-
-  const existingAppointment = await Appointment.findOne({
-    doctorId,
-    date,
-    timeSlot: timeSlot24h,
-    status: { $in: ["booked", "confirmed"] }, // Also check for confirmed status
-  });
-
-  if (existingAppointment) {
-    throw new ApiError(400, "This time slot is already booked");
-  }
-
-  // 4. Prepare patient data (Logged in or Guest)
   const appointmentData = {
     doctorId,
     date,
@@ -118,7 +104,8 @@ const bookAppointment = asyncHandler(async (req, res) => {
     appointmentType,
     locationName: matchingSession.locationName,
     reason,
-    status: "booked",
+    status: "pending", // Create as pending lock
+    expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5-minute lock
   };
 
   if (req.user) {
@@ -150,11 +137,30 @@ const bookAppointment = asyncHandler(async (req, res) => {
     appointmentData.patientEmail = patientEmail;
   }
 
-  const appointment = await Appointment.create(appointmentData);
+  try {
+    const appointment = await Appointment.create(appointmentData);
 
-  res
-    .status(201)
-    .json(new ApiResponse(201, appointment, "Appointment booked successfully"));
+    // Populate doctor info before sending response
+    await appointment.populate("doctorId", "name speciality image");
+
+    res
+      .status(201)
+      .json(
+        new ApiResponse(
+          201,
+          appointment,
+          "Appointment initiated successfully. Please complete payment within 5 minutes.",
+        ),
+      );
+  } catch (error) {
+    if (error.code === 11000) {
+      throw new ApiError(
+        400,
+        "This slot was just taken or is temporarily reserved. Please choose another slot.",
+      );
+    }
+    throw error;
+  }
 });
 
 // @desc    Get logged in user's appointments
@@ -241,14 +247,6 @@ const getLoggedInDoctorAppointments = asyncHandler(async (req, res) => {
     isTruthyQuery(req.query.upcoming) || isTruthyQuery(req.query.upcomming);
 
   if (upcomingOnly) {
-    // FIX: Compare string dates since your DB stores dates as strings
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayString = today.toISOString().split("T")[0]; // "2026-05-13"
-
-    filter.date = { $gte: todayString };
-
-    // Keep original function call
     applyUpcomingFilter(filter);
   }
 
@@ -317,9 +315,17 @@ const updateAppointmentStatus = asyncHandler(async (req, res) => {
 const getDoctorAppointments = asyncHandler(async (req, res) => {
   const { doctorId } = req.params;
 
-  const appointments = await Appointment.find({ doctorId })
+  const filter = { doctorId, isDeleted: false };
+  const upcomingOnly =
+    isTruthyQuery(req.query.upcoming) || isTruthyQuery(req.query.upcomming);
+
+  if (upcomingOnly) {
+    applyUpcomingFilter(filter);
+  }
+
+  const appointments = await Appointment.find(filter)
     .populate("patientId", "name email whatsappnumber")
-    .sort({ date: -1, timeSlot: -1 });
+    .sort(upcomingOnly ? { date: 1, timeSlot: 1 } : { date: -1, timeSlot: -1 });
 
   const formattedAppointments = appointments.map((appointment) => ({
     ...appointment.toObject(),
