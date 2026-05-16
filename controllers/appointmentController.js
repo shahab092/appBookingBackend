@@ -276,46 +276,12 @@ const getLoggedInDoctorAppointments = asyncHandler(async (req, res) => {
     isTruthyQuery(req.query.upcoming) || isTruthyQuery(req.query.upcomming);
 
   if (upcomingOnly) {
-    // DEBUG: Log to see what's happening
-    console.log('Upcoming filter enabled');
-    console.log('Doctor ID:', doctor._id);
-
-    // Get today's date in YYYY-MM-DD format
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayString = today.toISOString().split('T')[0];
-
-    console.log('Today string:', todayString);
-
-    // Add date filter
-    filter.date = { $gte: todayString };
-
-    // Keep original function call
-    if (typeof applyUpcomingFilter === 'function') {
-      applyUpcomingFilter(filter);
-    }
+    applyUpcomingFilter(filter);
   }
-
-  // DEBUG: Log the filter being used
-  console.log('Final filter:', JSON.stringify(filter, null, 2));
 
   const appointments = await Appointment.find(filter)
     .populate("patientId", "name email whatsappnumber")
     .sort(upcomingOnly ? { date: 1, timeSlot: 1 } : { date: -1, timeSlot: -1 });
-
-  // DEBUG: Log results
-  console.log('Found appointments count:', appointments.length);
-  if (appointments.length > 0) {
-    console.log('First appointment date:', appointments[0].date);
-    console.log('First appointment doctorId:', appointments[0].doctorId);
-  }
-
-  // DEBUG: Log results
-  console.log('Found appointments count:', appointments.length);
-  if (appointments.length > 0) {
-    console.log('First appointment date:', appointments[0].date);
-    console.log('First appointment doctorId:', appointments[0].doctorId);
-  }
 
   const formattedAppointments = appointments.map((appointment) => ({
     ...appointment.toObject(),
