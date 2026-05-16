@@ -73,7 +73,8 @@ exports.paymentCallback = async (req, res) => {
         if (status === 'paid') {
             await Appointment.findByIdAndUpdate(appointmentId || payment.appointmentId, {
                 paymentStatus: 'paid',
-                status: 'confirmed'
+                status: 'confirmed',
+                $unset: { expiresAt: 1 } // Remove the 5-minute TTL lock on success
             });
         } else {
             await Appointment.findByIdAndUpdate(appointmentId || payment.appointmentId, {

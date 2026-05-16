@@ -49,8 +49,12 @@ const appointmentSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ["booked", "confirmed", "completed", "cancelled"],
+    enum: ["pending", "booked", "confirmed", "completed", "cancelled"],
     default: "booked"
+  },
+  expiresAt: {
+    type: Date,
+    default: null
   },
   paymentStatus: {
     type: String,
@@ -66,5 +70,28 @@ const appointmentSchema = new mongoose.Schema({
     default: null
   }
 }, { timestamps: true });
+
+// Professional Concurrency Control:
+// Ensure only one active appointment (pending/booked/confirmed) exists for a doctor-date-timeslot combo.
+appointmentSchema.index(
+  { doctorId: 1, date: 1, timeSlot: 1 },
+  { 
+    unique: true, 
+    partialFilterExpression: { 
+      status: { $in: ["pending", "booked", "confirmed"] },
+      isDeleted: false
+    } 
+  }
+);
+
+// TTL Index for Soft Locks:
+// MongoDB will automatically delete documents when expiresAt is reached.
+appointmentSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+// Optimize for role-based upcoming appointment queries
+appointmentSchema.index({ doctorId: 1, date: 1, status: 1 });
+appointmentSchema.index({ patientId: 1, date: 1, status: 1 });
+// For general sorting and date-based filtering
+appointmentSchema.index({ date: 1, timeSlot: 1 });
 
 module.exports = mongoose.model("Appointment", appointmentSchema);
