@@ -56,6 +56,7 @@ app.use("/api/patient", require("./routes/patientRoutes"));
 app.use("/api/specialities", require("./routes/specialityRoutes.js"));
 app.use("/api/reviews", require("./routes/reviewRoutes"));
 app.use("/api/payments", require("./routes/paymentRoutes"));
+app.use("/api/chat", require("./routes/chat.js"));
 
 // Test route
 app.get("/", (req, res) => {
