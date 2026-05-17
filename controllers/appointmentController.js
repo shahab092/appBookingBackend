@@ -34,11 +34,28 @@ const isTruthyQuery = (value) =>
 const applyUpcomingFilter = (filter) => {
   const now = getPakistanDateTime();
 
-  filter.status = { $in: ["booked", "confirmed"] };
-  filter.$or = [
-    { date: { $gt: now.date } },
-    { date: now.date, timeSlot: { $gte: now.time } },
-  ];
+  // Case-insensitive status check using $expr
+  filter.$expr = {
+    $and: [
+      {
+        $or: [
+          { $eq: [{ $toLower: "$status" }, "booked"] },
+          { $eq: [{ $toLower: "$status" }, "confirmed"] }
+        ]
+      },
+      {
+        $or: [
+          { $gt: ["$date", now.date] },
+          {
+            $and: [
+              { $eq: ["$date", now.date] },
+              { $gte: ["$timeSlot", now.time] }
+            ]
+          }
+        ]
+      }
+    ]
+  };
 };
 
 // @desc    Book a new appointment
@@ -104,7 +121,7 @@ const bookAppointment = asyncHandler(async (req, res) => {
     appointmentType,
     locationName: matchingSession.locationName,
     reason,
-    status: "pending", // Create as pending lock
+    status: "pending", // Create as pending lock (lowercase)
     expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5-minute lock
   };
 
@@ -189,10 +206,16 @@ const getMyAppointments = asyncHandler(async (req, res) => {
     .populate("doctorId", "name speciality")
     .sort({ date: -1, timeSlot: -1 });
 
+  // Normalize status in response
+  const formattedAppointments = appointments.map((appointment) => ({
+    ...appointment.toObject(),
+    status: appointment.status?.toLowerCase(),
+  }));
+
   res
     .status(200)
     .json(
-      new ApiResponse(200, appointments, "Appointments fetched successfully"),
+      new ApiResponse(200, formattedAppointments, "Appointments fetched successfully"),
     );
 });
 
@@ -216,12 +239,18 @@ const getPatientAppointments = asyncHandler(async (req, res) => {
     .populate("doctorId", "name speciality")
     .sort(upcomingOnly ? { date: 1, timeSlot: 1 } : { date: -1, timeSlot: -1 });
 
+  // Normalize status in response
+  const formattedAppointments = appointments.map((appointment) => ({
+    ...appointment.toObject(),
+    status: appointment.status?.toLowerCase(),
+  }));
+
   res
     .status(200)
     .json(
       new ApiResponse(
         200,
-        appointments,
+        formattedAppointments,
         "Patient appointments fetched successfully",
       ),
     );
@@ -256,14 +285,11 @@ const getLoggedInDoctorAppointments = asyncHandler(async (req, res) => {
 
   const formattedAppointments = appointments.map((appointment) => ({
     ...appointment.toObject(),
-
+    status: appointment.status?.toLowerCase(),
     patientName: appointment.patientId?.name || appointment.patientName,
-
     patientEmail: appointment.patientId?.email || appointment.patientEmail,
-
     patientPhone:
       appointment.patientId?.whatsappnumber || appointment.patientPhone,
-
     isGuest: !appointment.patientId,
   }));
 
@@ -283,10 +309,17 @@ const getLoggedInDoctorAppointments = asyncHandler(async (req, res) => {
 // @access  Private
 const updateAppointmentStatus = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { status } = req.body;
+  let { status } = req.body;
+
+  if (!status) {
+    throw new ApiError(400, "Status is required");
+  }
+
+  // Normalize status to lowercase
+  status = status.toLowerCase();
 
   if (!["booked", "completed", "cancelled"].includes(status)) {
-    throw new ApiError(400, "Invalid status");
+    throw new ApiError(400, "Invalid status. Allowed values: booked, completed, cancelled");
   }
 
   const appointment = await Appointment.findById(id);
@@ -294,6 +327,9 @@ const updateAppointmentStatus = asyncHandler(async (req, res) => {
 
   // Check authorization
   // (In a real app, patients can only cancel, doctors can complete/cancel)
+  if (req.user.role === "patient" && status !== "cancelled") {
+    throw new ApiError(403, "Patients can only cancel appointments");
+  }
 
   appointment.status = status;
   await appointment.save();
@@ -315,6 +351,14 @@ const updateAppointmentStatus = asyncHandler(async (req, res) => {
 const getDoctorAppointments = asyncHandler(async (req, res) => {
   const { doctorId } = req.params;
 
+  // Optional: Add authorization check
+  if (req.user.role !== 'admin') {
+    const doctor = await Doctor.findOne({ userId: req.user._id });
+    if (!doctor || doctor._id.toString() !== doctorId) {
+      throw new ApiError(403, "You don't have permission to view these appointments");
+    }
+  }
+
   const filter = { doctorId, isDeleted: false };
   const upcomingOnly =
     isTruthyQuery(req.query.upcoming) || isTruthyQuery(req.query.upcomming);
@@ -329,14 +373,11 @@ const getDoctorAppointments = asyncHandler(async (req, res) => {
 
   const formattedAppointments = appointments.map((appointment) => ({
     ...appointment.toObject(),
-
+    status: appointment.status?.toLowerCase(),
     patientName: appointment.patientId?.name || appointment.patientName,
-
     patientEmail: appointment.patientId?.email || appointment.patientEmail,
-
     patientPhone:
       appointment.patientId?.whatsappnumber || appointment.patientPhone,
-
     isGuest: !appointment.patientId,
   }));
 
@@ -351,6 +392,153 @@ const getDoctorAppointments = asyncHandler(async (req, res) => {
     );
 });
 
+// @desc    Get all appointments (Admin only)
+// @route   GET /api/appointments/all
+// @access  Private (Admin only)
+const getAllAppointments = asyncHandler(async (req, res) => {
+  if (req.user.role !== 'admin') {
+    throw new ApiError(403, "Access denied. Admin only.");
+  }
+
+  const filter = { isDeleted: false };
+  const upcomingOnly =
+    isTruthyQuery(req.query.upcoming) || isTruthyQuery(req.query.upcomming);
+
+  if (upcomingOnly) {
+    applyUpcomingFilter(filter);
+  }
+
+  const appointments = await Appointment.find(filter)
+    .populate("doctorId", "name speciality")
+    .populate("patientId", "name email whatsappnumber")
+    .sort(upcomingOnly ? { date: 1, timeSlot: 1 } : { date: -1, timeSlot: -1 });
+
+  const formattedAppointments = appointments.map((appointment) => ({
+    ...appointment.toObject(),
+    status: appointment.status?.toLowerCase(),
+    patientName: appointment.patientId?.name || appointment.patientName,
+    patientEmail: appointment.patientId?.email || appointment.patientEmail,
+    patientPhone: appointment.patientId?.whatsappnumber || appointment.patientPhone,
+    doctorName: appointment.doctorId?.name,
+    doctorSpeciality: appointment.doctorId?.speciality,
+    isGuest: !appointment.patientId,
+  }));
+
+  res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        formattedAppointments,
+        "All appointments fetched successfully",
+      ),
+    );
+});
+
+// @desc    Get appointment by ID
+// @route   GET /api/appointments/:id
+// @access  Private
+const getAppointmentById = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const appointment = await Appointment.findById(id)
+    .populate("doctorId", "name speciality image")
+    .populate("patientId", "name email whatsappnumber");
+
+  if (!appointment) {
+    throw new ApiError(404, "Appointment not found");
+  }
+
+  // Check authorization
+  if (req.user.role !== 'admin') {
+    if (req.user.role === 'patient' && appointment.patientId?._id.toString() !== req.user._id) {
+      throw new ApiError(403, "You don't have permission to view this appointment");
+    }
+    
+    if (req.user.role === 'doctor') {
+      const doctor = await Doctor.findOne({ userId: req.user._id });
+      if (!doctor || appointment.doctorId._id.toString() !== doctor._id.toString()) {
+        throw new ApiError(403, "You don't have permission to view this appointment");
+      }
+    }
+  }
+
+  const formattedAppointment = {
+    ...appointment.toObject(),
+    status: appointment.status?.toLowerCase(),
+    patientName: appointment.patientId?.name || appointment.patientName,
+    patientEmail: appointment.patientId?.email || appointment.patientEmail,
+    patientPhone: appointment.patientId?.whatsappnumber || appointment.patientPhone,
+    isGuest: !appointment.patientId,
+  };
+
+  res
+    .status(200)
+    .json(
+      new ApiResponse(200, formattedAppointment, "Appointment fetched successfully"),
+    );
+});
+
+// @desc    Cancel appointment
+// @route   PATCH /api/appointments/:id/cancel
+// @access  Private
+const cancelAppointment = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { reason } = req.body;
+
+  const appointment = await Appointment.findById(id);
+  if (!appointment) {
+    throw new ApiError(404, "Appointment not found");
+  }
+
+  // Check if appointment can be cancelled (e.g., not in past, not already completed)
+  const appointmentDate = new Date(appointment.date);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  if (appointmentDate < today) {
+    throw new ApiError(400, "Cannot cancel past appointments");
+  }
+
+  const currentStatus = appointment.status?.toLowerCase();
+  if (currentStatus === 'completed') {
+    throw new ApiError(400, "Cannot cancel completed appointments");
+  }
+
+  if (currentStatus === 'cancelled') {
+    throw new ApiError(400, "Appointment is already cancelled");
+  }
+
+  // Check authorization
+  let isAuthorized = false;
+  
+  if (req.user.role === 'admin') {
+    isAuthorized = true;
+  } else if (req.user.role === 'patient' && appointment.patientId?.toString() === req.user._id) {
+    isAuthorized = true;
+  } else if (req.user.role === 'doctor') {
+    const doctor = await Doctor.findOne({ userId: req.user._id });
+    if (doctor && appointment.doctorId.toString() === doctor._id.toString()) {
+      isAuthorized = true;
+    }
+  }
+
+  if (!isAuthorized) {
+    throw new ApiError(403, "You don't have permission to cancel this appointment");
+  }
+
+  appointment.status = 'cancelled';
+  appointment.cancelledAt = new Date();
+  appointment.cancellationReason = reason || 'No reason provided';
+  await appointment.save();
+
+  res
+    .status(200)
+    .json(
+      new ApiResponse(200, appointment, "Appointment cancelled successfully"),
+    );
+});
+
 module.exports = {
   bookAppointment,
   getMyAppointments,
@@ -358,4 +546,7 @@ module.exports = {
   getLoggedInDoctorAppointments,
   updateAppointmentStatus,
   getDoctorAppointments,
+  getAllAppointments,
+  getAppointmentById,
+  cancelAppointment,
 };
