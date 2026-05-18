@@ -8,6 +8,7 @@ const dotenv = require("dotenv");
 const connectDB = require("./config/database");
 const doctorRoute = require("./routes/doctor.js");
 const appointmentRoute = require("./routes/appointment.js");
+const consultationRoute = require("./routes/consultation.js");
 const notificationRoute = require("./routes/notificationRoutes.js");
 const errorHandler = require("./middleware/error.middleware.js");
 const rateLimit = require("express-rate-limit");
@@ -51,6 +52,7 @@ app.use((req, res, next) => {
 app.use("/api/auth", authLimiter, require("./routes/users.js"));
 app.use("/api/doctor", doctorRoute);
 app.use("/api/appointments", appointmentRoute);
+app.use("/api/consultations", consultationRoute);
 app.use("/api/notifications", notificationRoute);
 app.use("/api/patient", require("./routes/patientRoutes"));
 app.use("/api/specialities", require("./routes/specialityRoutes.js"));
