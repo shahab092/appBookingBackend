@@ -32,13 +32,7 @@ const authLimiter = rateLimit({
 app.use(express.json({ limit: '10mb' })); // parse JSON
 app.use(
   cors({
-    origin: [
-      "http://localhost:5173",
-      "https://mern-stack-auth-drab.vercel.app",
-      "https://hostpital-managment.vercel.app",
-      "https://appbookingfrontend.onrender.com",
-      "https://www.ashfaqhospitals.com",
-    ],
+    origin: true,
     credentials: true,
   })
 );
@@ -66,11 +60,7 @@ const server = http.createServer(app);
 // Attach Socket.IO
 const io = new Server(server, {
   cors: {
-    origin: [
-      "http://localhost:5173",
-      "https://mern-stack-auth-drab.vercel.app",
-      "https://appbookingfrontend.onrender.com"
-    ],
+    origin: true,
     credentials: true,
   },
 });
