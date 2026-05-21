@@ -1,7 +1,10 @@
 const Notification = require("../models/Notification");
+const DeviceToken = require("../models/DeviceToken");
 const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
+const { sendNotificationToUser } = require("../utils/pushNotificationService");
+
 
 // ================= GET NOTIFICATIONS =================
 const getNotifications = asyncHandler(async (req, res) => {
@@ -80,9 +83,99 @@ const deleteNotification = asyncHandler(async (req, res) => {
   res.json(new ApiResponse(200, null, "Notification deleted"));
 });
 
+// ================= REGISTER DEVICE TOKEN =================
+const registerDeviceToken = asyncHandler(async (req, res) => {
+  if (!req.user || !req.user._id) {
+    throw new ApiError(401, "Unauthorized: user not found in request");
+  }
+
+  const { token, deviceType, browser, os } = req.body;
+
+  if (!token) {
+    throw new ApiError(400, "Token is required");
+  }
+
+  const userId = req.user._id;
+
+  // Clean up any stale associations where this token belongs to other users
+  await DeviceToken.deleteMany({ token, user: { $ne: userId } });
+
+  // Register or update the token for the current user
+  const deviceToken = await DeviceToken.findOneAndUpdate(
+    { token, user: userId },
+    {
+      deviceType: deviceType || "web",
+      browser: browser || "unknown",
+      os: os || "unknown",
+      lastActiveAt: new Date(),
+    },
+    { new: true, upsert: true }
+  );
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      deviceToken,
+      "Device token registered successfully"
+    )
+  );
+});
+
+// ================= UNREGISTER DEVICE TOKEN =================
+const unregisterDeviceToken = asyncHandler(async (req, res) => {
+  if (!req.user || !req.user._id) {
+    throw new ApiError(401, "Unauthorized");
+  }
+
+  const { token } = req.body;
+
+  if (!token) {
+    throw new ApiError(400, "Token is required");
+  }
+
+  await DeviceToken.deleteOne({ token, user: req.user._id });
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      null,
+      "Device token unregistered successfully"
+    )
+  );
+});
+
+// ================= SEND TEST NOTIFICATION =================
+const sendTestNotification = asyncHandler(async (req, res) => {
+  if (!req.user || !req.user._id) {
+    throw new ApiError(401, "Unauthorized");
+  }
+
+  const { title, body, type, link } = req.body;
+  const targetUserId = req.body.userId || req.user._id;
+
+  const result = await sendNotificationToUser(targetUserId, {
+    title: title || "Test Notification",
+    body: body || "This is a test notification from ApiDog/Postman!",
+    type: type || "info",
+    link: link || "/dashboard",
+  });
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      result,
+      "Test notification processed successfully"
+    )
+  );
+});
+
 module.exports = {
   getNotifications,
   markAsRead,
   markAllAsRead,
   deleteNotification,
+  registerDeviceToken,
+  unregisterDeviceToken,
+  sendTestNotification,
 };
+

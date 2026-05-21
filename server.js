@@ -16,6 +16,9 @@ const { initSockets } = require("./sockets");
 
 dotenv.config();
 
+// Initialize Firebase Admin SDK
+require("./config/firebaseAdmin");
+
 // Initialize app
 const app = express();
 const PORT = process.env.PORT || 5000;

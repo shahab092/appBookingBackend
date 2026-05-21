@@ -5,6 +5,9 @@ const {
   markAsRead,
   markAllAsRead,
   deleteNotification,
+  registerDeviceToken,
+  unregisterDeviceToken,
+  sendTestNotification,
 } = require("../controllers/notificationController");
 const auth = require("../middleware/auth"); // must be a function
 
@@ -18,5 +21,9 @@ router.get("/", getNotifications);
 router.patch("/:id/read", markAsRead);
 router.patch("/read-all", markAllAsRead);
 router.delete("/:id", deleteNotification);
+
+router.post("/register-token", registerDeviceToken);
+router.post("/unregister-token", unregisterDeviceToken);
+router.post("/send-test", sendTestNotification);
 
 module.exports = router;
