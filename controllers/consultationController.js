@@ -6,6 +6,7 @@ const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const { uploadToR2 } = require("../utils/s3Storage");
+const { emitConsultationInProgress } = require("../sockets/consultationSocketHandler");
 
 const normalizeRole = (role) => String(role || "").toLowerCase();
 
@@ -165,6 +166,21 @@ const startConsultation = asyncHandler(async (req, res) => {
   );
 
   await consultation.save();
+
+  // ── Real-time: notify the patient that their consultation is IN_PROGRESS ──
+  const io = req.app.get("io");
+  if (io) {
+    const serialized = await serializeConsultation(consultation);
+    emitConsultationInProgress(io, consultation.patientId, {
+      consultationId: consultation._id,
+      appointmentId: consultation.appointmentId,
+      doctorId: consultation.doctorId,
+      status: "IN_PROGRESS",
+      startedAt: consultation.startedAt,
+      doctor: serialized.doctorId, // populated doctor info
+      message: "Your doctor has started the consultation. Please join now.",
+    });
+  }
 
   res
     .status(201)

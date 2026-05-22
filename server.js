@@ -28,7 +28,34 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const parseCookies = (req, res, next) => {
+  const cookieHeader = req.headers.cookie;
+
+  req.cookies = {};
+
+  if (!cookieHeader) {
+    return next();
+  }
+
+  cookieHeader.split(";").forEach((cookie) => {
+    const separatorIndex = cookie.indexOf("=");
+    if (separatorIndex === -1) return;
+
+    const key = cookie.slice(0, separatorIndex).trim();
+    const value = cookie.slice(separatorIndex + 1).trim();
+
+    try {
+      req.cookies[key] = decodeURIComponent(value);
+    } catch {
+      req.cookies[key] = value;
+    }
+  });
+
+  next();
+};
+
 // Middleware
+app.use(parseCookies);
 app.use(express.json({ limit: '10mb' })); // parse JSON
 app.use(
   cors({

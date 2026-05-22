@@ -11,6 +11,29 @@ const ApiResponse = require('../utils/ApiResponse');
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+const cookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax",
+};
+
+const getRefreshTokenFromRequest = (req) => {
+  return (
+    req.cookies?.refreshToken ||
+    req.body?.refreshToken ||
+    req.header("x-refresh-token")
+  );
+};
+
+const buildUserResponse = (user) => ({
+  _id: user._id,
+  whatsappnumber: user.whatsappnumber,
+  role: user.role,
+  isVerified: user.isVerified,
+  status: user.status,
+  doctorStatus: user._doc?.doctorStatus,
+});
+
 // Generate Access Token (short-lived)
 const generateAccessToken = (user) => {
   return jwt.sign(
@@ -164,26 +187,12 @@ const login = asyncHandler(async (req, res) => {
   user.refreshToken = refreshToken;
   await user.save();
 
-  // Create a clean user object for the response
-  const loggedInUser = {
-    _id: user._id,
-    whatsappnumber: user.whatsappnumber,
-    role: user.role,
-    isVerified: user.isVerified,
-    status: user.status,
-    doctorStatus: user._doc.doctorStatus, // Include doctor status if available
-  };
-
-  const options = {
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax",
-  };
+  const loggedInUser = buildUserResponse(user);
 
   res.status(200)
-    .cookie("refreshToken", refreshToken, options)
+    .cookie("refreshToken", refreshToken, cookieOptions)
     .json(
-      new ApiResponse(200, { user: loggedInUser, accessToken }, "Login successful")
+      new ApiResponse(200, { user: loggedInUser, accessToken, refreshToken }, "Login successful")
     );
 });
 
@@ -196,7 +205,7 @@ const googleLogin = asyncHandler(async (req, res) => {
 
 // Refresh Access Token
 const refreshAccessToken = asyncHandler(async (req, res) => {
-  const refreshToken = req.cookies?.refreshToken;
+  const refreshToken = getRefreshTokenFromRequest(req);
   if (!refreshToken) throw new ApiError(401, "Refresh token missing");
 
   let decoded;
@@ -206,13 +215,29 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     throw new ApiError(401, "Invalid refresh token");
   }
 
-  const user = await User.findById(decoded.id);
+  const user = await User.findById(decoded.id).select("+refreshToken");
   if (!user || user.refreshToken !== refreshToken) throw new ApiError(401, "Invalid refresh token");
+  if (!user.isVerified) throw new ApiError(401, "User is not verified");
 
   const newAccessToken = generateAccessToken(user);
-  res.status(200).json(
-    new ApiResponse(200, { accessToken: newAccessToken, user }, "Access token refreshed successfully")
-  );
+  const newRefreshToken = generateRefreshToken(user);
+
+  user.refreshToken = newRefreshToken;
+  await user.save();
+
+  res.status(200)
+    .cookie("refreshToken", newRefreshToken, cookieOptions)
+    .json(
+      new ApiResponse(
+        200,
+        {
+          accessToken: newAccessToken,
+          refreshToken: newRefreshToken,
+          user: buildUserResponse(user),
+        },
+        "Access token refreshed successfully"
+      )
+    );
 });
 
 // Logout User
@@ -223,7 +248,7 @@ const logoutUser = asyncHandler(async (req, res) => {
   await User.findByIdAndUpdate(userId, { $unset: { refreshToken: 1 } });
 
   res.status(200)
-    .clearCookie("refreshToken", { httpOnly: true, secure: true, sameSite: "lax" })
+    .clearCookie("refreshToken", cookieOptions)
     .json(new ApiResponse(200, {}, "User logged out successfully"));
 });
 
