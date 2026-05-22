@@ -1,2 +1,5 @@
- .env
+.env
 /node_modules
+
+# Firebase service account — contains private keys, never commit
+config/firebase-service-account.json

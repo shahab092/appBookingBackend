@@ -1,33 +1,38 @@
-const admin = require("firebase-admin");
+/**
+ * firebaseAdmin.js
+ *
+ * Initializes Firebase Admin SDK using the service account JSON file.
+ * If firebase-admin is not installed or the file is missing, exports null
+ * so the server keeps running — only push notifications are disabled.
+ */
 
-const projectId = process.env.FIREBASE_PROJECT_ID;
-const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+let admin = null;
 
-if (privateKey) {
-  // Handle escaped newlines that commonly occur in env variables
-  privateKey = privateKey.replace(/\\n/g, "\n");
-}
+try {
+  admin = require("firebase-admin");
 
-let firebaseApp = null;
+  // Load credentials directly from the service account JSON file
+  const serviceAccount = require("./firebase-service-account.json");
 
-if (projectId && clientEmail && privateKey) {
-  try {
-    firebaseApp = admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId,
-        clientEmail,
-        privateKey,
-      }),
+  if (!admin.apps.length) {
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
     });
-    console.log("🔥 Firebase Admin SDK initialized successfully.");
-  } catch (error) {
-    console.error("❌ Firebase Admin SDK initialization failed:", error.message);
+    console.log("🔥 Firebase Admin SDK initialized — project:", serviceAccount.project_id);
+  } else {
+    console.log("🔥 Firebase Admin SDK already initialized.");
   }
-} else {
-  console.warn(
-    "⚠️ Firebase configuration missing in environment variables. FCM will be disabled."
-  );
+} catch (err) {
+  if (err.code === "MODULE_NOT_FOUND") {
+    if (err.message.includes("firebase-admin")) {
+      console.warn("⚠️  firebase-admin not installed. Run: npm install firebase-admin");
+    } else {
+      console.warn("⚠️  firebase-service-account.json not found in config/. Push notifications disabled.");
+    }
+  } else {
+    console.error("❌ Firebase Admin SDK initialization failed:", err.message);
+  }
+  admin = null;
 }
 
 module.exports = admin;

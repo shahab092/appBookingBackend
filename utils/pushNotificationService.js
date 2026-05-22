@@ -40,9 +40,9 @@ const sendNotificationToUser = async (userId, { title, body, data = {}, type = "
 
     const tokens = deviceTokens.map(dt => dt.token);
 
-    // If Firebase Admin is not initialized, return early
+    // If Firebase Admin is not initialized, skip FCM silently
     if (!admin || !admin.apps || admin.apps.length === 0) {
-      console.warn("⚠️ Firebase Admin SDK is not initialized. Skipping FCM delivery.");
+      console.warn("⚠️ Firebase Admin not available. Skipping FCM delivery.");
       return { success: true, dbNotification: notification, pushSentCount: 0 };
     }
 
@@ -162,7 +162,7 @@ const sendConsultationFCM = async (patientUserId, { consultationId, appointmentI
     }
 
     if (!admin || !admin.apps || admin.apps.length === 0) {
-      console.warn("⚠️ Firebase Admin SDK not initialized. Skipping consultation FCM.");
+      console.warn("⚠️ Firebase Admin not available. Skipping consultation FCM.");
       return { success: true, pushSentCount: 0 };
     }
 
