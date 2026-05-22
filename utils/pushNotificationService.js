@@ -145,7 +145,87 @@ const sendNotificationToMultipleUsers = async (userIds, { title, body, data = {}
   }
 };
 
+/**
+ * Sends a HIGH-PRIORITY data-only FCM message when a doctor starts a consultation.
+ * Data-only (no `notification` block) so Android delivers it headlessly even when
+ * the app is killed — the RN Firebase background handler shows the full-screen UI.
+ *
+ * @param {string} patientUserId  - User._id of the patient
+ * @param {{ consultationId, appointmentId, doctorName }} payload
+ */
+const sendConsultationFCM = async (patientUserId, { consultationId, appointmentId, doctorName }) => {
+  try {
+    const deviceTokens = await DeviceToken.find({ user: patientUserId });
+    if (!deviceTokens || deviceTokens.length === 0) {
+      console.log(`[FCM] No device tokens for patient ${patientUserId}. Skipping FCM.`);
+      return { success: true, pushSentCount: 0 };
+    }
+
+    if (!admin || !admin.apps || admin.apps.length === 0) {
+      console.warn("⚠️ Firebase Admin SDK not initialized. Skipping consultation FCM.");
+      return { success: true, pushSentCount: 0 };
+    }
+
+    const tokens = deviceTokens.map((dt) => dt.token);
+
+    // Build data-only messages (no `notification` block so Android handles it headlessly)
+    const messages = tokens.map((token) => ({
+      token,
+      // NO notification block — keeps it as a data message
+      data: {
+        type:           "CONSULTATION_STARTED",
+        consultationId: String(consultationId),
+        appointmentId:  String(appointmentId),
+        doctorName:     String(doctorName || "Your Doctor"),
+      },
+      android: {
+        priority: "high",
+      },
+      apns: {
+        headers: {
+          "apns-priority": "10",
+          "apns-push-type": "background",
+        },
+        payload: {
+          aps: {
+            "content-available": 1,
+          },
+        },
+      },
+    }));
+
+    const response = await admin.messaging().sendEach(messages);
+    console.log(`[FCM] Consultation FCM sent: ${response.successCount}/${messages.length}`);
+
+    // Prune stale tokens
+    const tokensToDelete = [];
+    response.responses.forEach((res, idx) => {
+      if (!res.success) {
+        const code = res.error?.code || "";
+        if (
+          code === "messaging/registration-token-not-registered" ||
+          code === "messaging/invalid-registration-token" ||
+          code === "messaging/invalid-argument"
+        ) {
+          tokensToDelete.push(tokens[idx]);
+        }
+      }
+    });
+    if (tokensToDelete.length > 0) {
+      await DeviceToken.deleteMany({ token: { $in: tokensToDelete } });
+      console.log(`[FCM] Pruned ${tokensToDelete.length} stale tokens.`);
+    }
+
+    return { success: true, pushSentCount: response.successCount };
+  } catch (error) {
+    console.error("[FCM] sendConsultationFCM error:", error);
+    // Non-fatal — socket already notified the patient if app is open
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = {
   sendNotificationToUser,
   sendNotificationToMultipleUsers,
+  sendConsultationFCM,
 };

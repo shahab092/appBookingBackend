@@ -3,6 +3,7 @@ const multer = require("multer");
 const {
   startConsultation,
   getConsultationById,
+  getActiveConsultation,
   updateSymptoms,
   updateInvestigations,
   uploadInvestigationResult,
@@ -74,6 +75,11 @@ router.post(
   validateStartConsultation,
   startConsultation,
 );
+
+// IMPORTANT: /active/me must be registered BEFORE /:id to avoid
+// Express treating "active" as a consultation ObjectId and returning 500.
+router.get("/active/me", getActiveConsultation);
+
 
 router.get("/:id", validateParamsObjectIds("id"), getConsultationById);
 

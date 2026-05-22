@@ -7,6 +7,7 @@ const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const { uploadToR2 } = require("../utils/s3Storage");
 const { emitConsultationInProgress } = require("../sockets/consultationSocketHandler");
+const { sendConsultationFCM } = require("../utils/pushNotificationService");
 
 const normalizeRole = (role) => String(role || "").toLowerCase();
 
@@ -138,12 +139,38 @@ const startConsultation = asyncHandler(async (req, res) => {
   });
 
   if (existing) {
+    // Consultation already exists — re-notify the patient so they can join.
+    // This handles the case where the doctor taps "Start" a second time
+    // (e.g. no visible response on first tap) or the socket event was missed.
+    const serialized = await serializeConsultation(existing);
+
+    const io = req.app.get("io");
+    if (io && existing.status === "IN_PROGRESS") {
+      emitConsultationInProgress(io, existing.patientId, {
+        consultationId: existing._id,
+        appointmentId:  existing.appointmentId,
+        doctorId:       existing.doctorId,
+        status:         "IN_PROGRESS",
+        startedAt:      existing.startedAt,
+        doctor:         serialized?.doctorId,
+        message:        "Your doctor has started the consultation. Please join now.",
+      });
+    }
+
+    if (existing.status === "IN_PROGRESS") {
+      sendConsultationFCM(existing.patientId, {
+        consultationId: existing._id.toString(),
+        appointmentId:  existing.appointmentId.toString(),
+        doctorName:     serialized?.doctorId?.name || "Your Doctor",
+      }).catch((err) => console.error("[FCM] Re-notify FCM error:", err));
+    }
+
     return res
       .status(200)
       .json(
         new ApiResponse(
           200,
-          await serializeConsultation(existing),
+          serialized,
           "Consultation already exists",
         ),
       );
@@ -181,6 +208,14 @@ const startConsultation = asyncHandler(async (req, res) => {
       message: "Your doctor has started the consultation. Please join now.",
     });
   }
+
+  // ── FCM: notify patient if app is background / killed (fire-and-forget) ──
+  const serializedForFCM = await serializeConsultation(consultation);
+  sendConsultationFCM(consultation.patientId, {
+    consultationId: consultation._id.toString(),
+    appointmentId:  consultation.appointmentId.toString(),
+    doctorName:     serializedForFCM?.doctorId?.name || "Your Doctor",
+  }).catch((err) => console.error("[FCM] Non-fatal consultation FCM error:", err));
 
   res
     .status(201)
@@ -727,9 +762,34 @@ const getPrescription = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, rx, "Prescription fetched successfully"));
 });
 
+// @desc    Get current patient's active (IN_PROGRESS) consultation
+// @route   GET /api/consultations/active/me
+// @access  Private (Patient only)
+// Safety-check endpoint — called before entering ConsultationRoom.
+// Never navigate a patient into the room based solely on FCM data;
+// always verify here first because the doctor may have completed/cancelled.
+const getActiveConsultation = asyncHandler(async (req, res) => {
+  const consultation = await Consultation.findOne({
+    patientId: req.user._id,
+    status: "IN_PROGRESS",
+  })
+    .populate("appointmentId")
+    .populate("patientId", "whatsappnumber role")
+    .populate("doctorId", "name speciality image pmdcRegistrationNumber");
+
+  if (!consultation) {
+    throw new ApiError(404, "No active consultation found for this patient");
+  }
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, consultation, "Active consultation fetched successfully"));
+});
+
 module.exports = {
   startConsultation,
   getConsultationById,
+  getActiveConsultation,
   updateSymptoms,
   updateInvestigations,
   uploadInvestigationResult,
