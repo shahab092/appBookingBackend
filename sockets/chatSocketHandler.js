@@ -56,10 +56,12 @@ const chatSocketHandler = (io) => {
         chat.lastMessage = newMessage._id;
         await chat.save();
 
-        // Broadcast to everyone in the room (including sender, or sender can rely on callback)
-        chatNamespace.to(chatId).emit("receive_message", newMessage);
+        // Broadcast to everyone in the room EXCEPT the sender.
+        // The sender already receives the message via the callback below,
+        // so broadcasting back to them would cause a duplicate message.
+        socket.to(chatId).emit("receive_message", newMessage);
 
-        // Acknowledge success to sender
+        // Acknowledge success to sender with the saved message
         if (callback) callback({ success: true, message: newMessage });
       } catch (error) {
         console.error("Chat Error:", error);
