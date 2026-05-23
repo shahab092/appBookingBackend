@@ -27,9 +27,10 @@ const chatSocketHandler = (io) => {
     console.log(`🔌 User connected to chat: ${socket.userId} (${socket.userModel})`);
 
     // Join a specific chat room
-    socket.on("join_chat", (chatId) => {
-      socket.join(chatId);
-      console.log(`User ${socket.userId} joined chat ${chatId}`);
+    socket.on("join_chat", async (chatId) => {
+      await socket.join(chatId);
+      const roomSize = chatNamespace.adapter.rooms.get(chatId)?.size || 0;
+      console.log(`[Chat] User ${socket.userId} (${socket.userModel}) joined room ${chatId} | room size: ${roomSize}`);
     });
 
     // Handle incoming messages
@@ -56,13 +57,29 @@ const chatSocketHandler = (io) => {
         chat.lastMessage = newMessage._id;
         await chat.save();
 
-        // Broadcast to everyone in the room EXCEPT the sender.
-        // The sender already receives the message via the callback below,
-        // so broadcasting back to them would cause a duplicate message.
-        socket.to(chatId).emit("receive_message", newMessage);
+        // Emit a plain JSON-serializable object — NOT the raw Mongoose doc.
+        // Raw docs can serialize ObjectId fields in unexpected ways across
+        // different socket.io / Mongoose version combinations.
+        const payload = {
+          _id:         newMessage._id.toString(),
+          chatId:      newMessage.chatId.toString(),
+          senderId:    newMessage.senderId.toString(),
+          senderModel: newMessage.senderModel,
+          messageType: newMessage.messageType,
+          content:     newMessage.content,
+          fileName:    newMessage.fileName || null,
+          isRead:      newMessage.isRead,
+          createdAt:   newMessage.createdAt,
+          updatedAt:   newMessage.updatedAt,
+        };
 
-        // Acknowledge success to sender with the saved message
-        if (callback) callback({ success: true, message: newMessage });
+        console.log(`[Chat] Broadcasting to room ${chatId}:`, payload._id, '| sender:', socket.userId);
+
+        // Broadcast to everyone in the room EXCEPT the sender.
+        socket.to(chatId).emit("receive_message", payload);
+
+        // Acknowledge success to sender with the same plain payload
+        if (callback) callback({ success: true, message: payload });
       } catch (error) {
         console.error("Chat Error:", error);
         if (callback) callback({ success: false, error: error.message });
