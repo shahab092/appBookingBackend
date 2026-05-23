@@ -22,7 +22,7 @@ const getUserIdentity = async (user) => {
 // @route   POST /api/chat/init
 // @access  Private
 const initChat = asyncHandler(async (req, res) => {
-  const { appointmentId } = req.body; 
+  const { appointmentId } = req.body;
   if (!appointmentId) throw new ApiError(400, "appointmentId is required");
 
   // Fetch the appointment to verify participants
@@ -32,30 +32,40 @@ const initChat = asyncHandler(async (req, res) => {
 
   const identity = await getUserIdentity(req.user);
 
+  console.log(`[initChat] ${identity.type} ${identity.id} → appointmentId: ${appointmentId}`);
+
   // Security check: Must be the doctor or the patient of this appointment
-  const isParticipant = 
+  const isParticipant =
     (identity.type === "Doctor" && appointment.doctorId.toString() === identity.id.toString()) ||
     (identity.type === "User" && appointment.patientId && appointment.patientId.toString() === identity.id.toString());
 
   if (!isParticipant) {
+    console.warn(`[initChat] REJECTED: ${identity.type} ${identity.id} is not a participant of appointment ${appointmentId}`);
     throw new ApiError(403, "You are not authorized to join the chat for this appointment");
   }
 
-  let chat = await Chat.findOne({ appointmentId })
+  // ── Atomic upsert: find OR create in a single MongoDB operation.
+  // This eliminates the race condition where doctor and patient both call
+  // initChat at the same time, both find no chat, and both create one —
+  // resulting in two different chats (and two different socket rooms).
+  const rawChat = await Chat.findOneAndUpdate(
+    { appointmentId },
+    {
+      $setOnInsert: {
+        appointmentId,
+        doctorId: appointment.doctorId,
+        patientId: appointment.patientId,
+      },
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+
+  // Populate after upsert
+  const chat = await Chat.findById(rawChat._id)
     .populate("doctorId", "name image speciality")
     .populate("patientId", "name email image");
 
-  if (!chat) {
-    chat = await Chat.create({
-      appointmentId,
-      doctorId: appointment.doctorId,
-      patientId: appointment.patientId
-    });
-    // Populate it for the response
-    chat = await Chat.findById(chat._id)
-      .populate("doctorId", "name image speciality")
-      .populate("patientId", "name email image");
-  }
+  console.log(`[initChat] chatId: ${chat._id} for appointmentId: ${appointmentId}`);
 
   res.status(200).json(new ApiResponse(200, chat, "Chat initialized"));
 });
