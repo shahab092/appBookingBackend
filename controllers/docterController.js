@@ -13,6 +13,7 @@ const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const SpecialitySuggestion = require('../models/SpecialitySuggestion');
 const { uploadToR2, deleteFromR2 } = require('../utils/s3Storage');
+const { sendNotificationToUser } = require("../utils/pushNotificationService");
 require('dotenv').config();
 
 // Validation Regex
@@ -64,6 +65,25 @@ const hasValidEducation = (education = []) =>
   education.every(
     (edu) => edu.degree && edu.institute && edu.startYear && edu.endYear,
   );
+
+const sendDoctorApprovalNotification = async (doctor) => {
+  if (!doctor.userId) return;
+
+  try {
+    await sendNotificationToUser(doctor.userId, {
+      title: "Account Activated",
+      body: "Your doctor account has been activated. You can now start using the portal.",
+      type: "success",
+      link: "/doctor",
+      data: {
+        doctorId: doctor._id.toString(),
+        status: "approved",
+      },
+    });
+  } catch (error) {
+    console.error("Failed to send doctor approval notification:", error);
+  }
+};
 
 // Helper to check for overlapping time sessions
 const hasOverlap = (sessions) => {
@@ -205,6 +225,10 @@ async function updateStatus(req, res) {
 
     await doctor.save();
 
+    if (status === "approved" && prevStatus !== "approved") {
+      await sendDoctorApprovalNotification(doctor);
+    }
+
     // Broadcast update to admins
     refreshAdminStats(req);
 
@@ -217,7 +241,7 @@ async function updateStatus(req, res) {
         status: doctor.status,
         previousStatus: prevStatus,
       },
-      message: `Doctor status updated to "${status}"${status === "approved" ? ". Approval email sent." : ""}`,
+      message: `Doctor status updated to "${status}"${status === "approved" ? ". Doctor notified." : ""}`,
     });
   } catch (err) {
     console.error("Update status error:", err);
@@ -262,6 +286,8 @@ async function approveDoctor(req, res) {
     // Email logic disabled as per previous request
 
     await doctor.save();
+
+    await sendDoctorApprovalNotification(doctor);
 
     // Broadcast update to admins
     refreshAdminStats(req);
