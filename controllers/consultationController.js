@@ -139,6 +139,11 @@ const startConsultation = asyncHandler(async (req, res) => {
   });
 
   if (existing) {
+    if (existing.status === "IN_PROGRESS" && appointment.status !== "inprogress") {
+      appointment.status = "inprogress";
+      await appointment.save();
+    }
+
     // Consultation already exists — re-notify the patient so they can join.
     // This handles the case where the doctor taps "Start" a second time
     // (e.g. no visible response on first tap) or the socket event was missed.
@@ -193,6 +198,9 @@ const startConsultation = asyncHandler(async (req, res) => {
   );
 
   await consultation.save();
+  await Appointment.findByIdAndUpdate(appointment._id, {
+    status: "inprogress",
+  });
 
   // ── Real-time: notify the patient that their consultation is IN_PROGRESS ──
   const io = req.app.get("io");

@@ -49,7 +49,7 @@ const appointmentSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ["pending", "booked", "confirmed", "completed", "cancelled"],
+    enum: ["pending", "booked", "confirmed", "inprogress", "completed", "cancelled"],
     default: "booked"
   },
   expiresAt: {
@@ -72,13 +72,13 @@ const appointmentSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Professional Concurrency Control:
-// Ensure only one active appointment (pending/booked/confirmed) exists for a doctor-date-timeslot combo.
+// Ensure only one active appointment (pending/booked/confirmed/inprogress) exists for a doctor-date-timeslot combo.
 appointmentSchema.index(
   { doctorId: 1, date: 1, timeSlot: 1 },
   { 
     unique: true, 
     partialFilterExpression: { 
-      status: { $in: ["pending", "booked", "confirmed"] },
+      status: { $in: ["pending", "booked", "confirmed", "inprogress"] },
       isDeleted: false
     } 
   }
