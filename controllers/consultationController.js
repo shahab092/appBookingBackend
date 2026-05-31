@@ -82,10 +82,55 @@ const getPayloadFiles = (body) => {
   return Array.isArray(body.resultFiles) ? body.resultFiles : [];
 };
 
+const isValidResultFile = (file) => {
+  if (!file?.buffer?.length) return false;
+
+  const bytes = file.buffer;
+  const mimeType = String(file.mimetype || "").toLowerCase();
+
+  const isPdf =
+    mimeType === "application/pdf" &&
+    bytes[0] === 0x25 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x44 &&
+    bytes[3] === 0x46;
+
+  const isJpeg =
+    ["image/jpeg", "image/jpg"].includes(mimeType) &&
+    bytes[0] === 0xff &&
+    bytes[1] === 0xd8 &&
+    bytes[2] === 0xff;
+
+  const isPng =
+    mimeType === "image/png" &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a;
+
+  const isWebp =
+    mimeType === "image/webp" &&
+    bytes.slice(0, 4).toString("ascii") === "RIFF" &&
+    bytes.slice(8, 12).toString("ascii") === "WEBP";
+
+  return isPdf || isJpeg || isPng || isWebp;
+};
+
 const uploadResultFiles = async (files = []) => {
   const uploadedFiles = [];
 
   for (const file of files) {
+    if (!isValidResultFile(file)) {
+      throw new ApiError(
+        400,
+        `Invalid report file: ${file.originalname}. Allowed files are valid PDF, JPEG, PNG, or WEBP.`,
+      );
+    }
+
     const fileUrl = await uploadToR2(file.buffer, file.originalname, file.mimetype);
     uploadedFiles.push({
       fileName: file.originalname,
