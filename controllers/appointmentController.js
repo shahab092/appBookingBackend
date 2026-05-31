@@ -31,13 +31,14 @@ const getPakistanDateTime = () => {
 const isTruthyQuery = (value) =>
   value === true || value === "true" || value === "1";
 
-const applyUpcomingFilter = (filter) => {
+const applyUpcomingFilter = (filter, statuses = ["confirmed"]) => {
   const now = getPakistanDateTime();
+  const normalizedStatuses = statuses.map((status) => status.toLowerCase());
 
   // Upcoming lists should show only confirmed appointments from today onward.
   filter.$expr = {
     $and: [
-      { $eq: [{ $toLower: "$status" }, "confirmed"] },
+      { $in: [{ $toLower: "$status" }, normalizedStatuses] },
       { $gte: ["$date", now.date] },
     ]
   };
@@ -184,7 +185,10 @@ const getMyAppointments = asyncHandler(async (req, res) => {
     isTruthyQuery(req.query.upcoming) || isTruthyQuery(req.query.upcomming);
 
   if (upcomingOnly) {
-    applyUpcomingFilter(filter);
+    applyUpcomingFilter(
+      filter,
+      req.user.role === "doctor" ? ["confirmed", "inprogress"] : ["confirmed"],
+    );
   }
 
   const appointments = await Appointment.find(filter)
@@ -261,7 +265,7 @@ const getLoggedInDoctorAppointments = asyncHandler(async (req, res) => {
     isTruthyQuery(req.query.upcoming) || isTruthyQuery(req.query.upcomming);
 
   if (upcomingOnly) {
-    applyUpcomingFilter(filter);
+    applyUpcomingFilter(filter, ["confirmed", "inprogress"]);
   }
 
   const appointments = await Appointment.find(filter)
@@ -349,7 +353,7 @@ const getDoctorAppointments = asyncHandler(async (req, res) => {
     isTruthyQuery(req.query.upcoming) || isTruthyQuery(req.query.upcomming);
 
   if (upcomingOnly) {
-    applyUpcomingFilter(filter);
+    applyUpcomingFilter(filter, ["confirmed", "inprogress"]);
   }
 
   const appointments = await Appointment.find(filter)
