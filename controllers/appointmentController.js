@@ -34,26 +34,11 @@ const isTruthyQuery = (value) =>
 const applyUpcomingFilter = (filter) => {
   const now = getPakistanDateTime();
 
-  // Case-insensitive status check using $expr
+  // Upcoming lists should show only confirmed appointments from today onward.
   filter.$expr = {
     $and: [
-      {
-        $or: [
-          { $eq: [{ $toLower: "$status" }, "booked"] },
-          { $eq: [{ $toLower: "$status" }, "confirmed"] }
-        ]
-      },
-      {
-        $or: [
-          { $gt: ["$date", now.date] },
-          {
-            $and: [
-              { $eq: ["$date", now.date] },
-              { $gte: ["$timeSlot", now.time] }
-            ]
-          }
-        ]
-      }
+      { $eq: [{ $toLower: "$status" }, "confirmed"] },
+      { $gte: ["$date", now.date] },
     ]
   };
 };
