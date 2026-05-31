@@ -3,6 +3,7 @@ const multer = require("multer");
 const {
   startConsultation,
   getConsultationById,
+  getConsultationByAppointmentId,
   getActiveConsultation,
   updateSymptoms,
   updateInvestigations,
@@ -80,6 +81,11 @@ router.post(
 // Express treating "active" as a consultation ObjectId and returning 500.
 router.get("/active/me", getActiveConsultation);
 
+router.get(
+  "/appointment/:appointmentId",
+  validateParamsObjectIds("appointmentId"),
+  getConsultationByAppointmentId,
+);
 
 router.get("/:id", validateParamsObjectIds("id"), getConsultationById);
 

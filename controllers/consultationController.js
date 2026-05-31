@@ -139,7 +139,28 @@ const startConsultation = asyncHandler(async (req, res) => {
   });
 
   if (existing) {
-    if (existing.status === "IN_PROGRESS" && appointment.status !== "inprogress") {
+    if (existing.status === "COMPLETED") {
+      throw new ApiError(400, "Consultation is already completed");
+    }
+
+    if (existing.status === "CANCELLED") {
+      throw new ApiError(400, "Cancelled consultation cannot be started");
+    }
+
+    if (existing.status !== "IN_PROGRESS") {
+      existing.status = "IN_PROGRESS";
+      existing.startedAt = existing.startedAt || new Date();
+      addLog(
+        existing,
+        "consultation",
+        "START",
+        req,
+        "Consultation started",
+      );
+      await existing.save();
+    }
+
+    if (appointment.status !== "inprogress") {
       appointment.status = "inprogress";
       await appointment.save();
     }
@@ -241,6 +262,31 @@ const startConsultation = asyncHandler(async (req, res) => {
 // @access  Private (Doctor/Patient participant)
 const getConsultationById = asyncHandler(async (req, res) => {
   const consultation = await findConsultationForUser(req.params.id, req);
+
+  res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        await serializeConsultation(consultation),
+        "Consultation fetched successfully",
+      ),
+    );
+});
+
+// @desc    Get consultation details by appointment ID
+// @route   GET /api/consultations/appointment/:appointmentId
+// @access  Private (Doctor/Patient participant)
+const getConsultationByAppointmentId = asyncHandler(async (req, res) => {
+  const consultation = await Consultation.findOne({
+    appointmentId: req.params.appointmentId,
+  });
+
+  if (!consultation) {
+    throw new ApiError(404, "Consultation not found for this appointment");
+  }
+
+  await ensureParticipant(consultation, req.user);
 
   res
     .status(200)
@@ -797,6 +843,7 @@ const getActiveConsultation = asyncHandler(async (req, res) => {
 module.exports = {
   startConsultation,
   getConsultationById,
+  getConsultationByAppointmentId,
   getActiveConsultation,
   updateSymptoms,
   updateInvestigations,
