@@ -5,7 +5,7 @@ const Patient = require("../models/Patient");
 const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
-const { uploadToR2 } = require("../utils/s3Storage");
+const { uploadToR2, generateSignedUrl, signFileUrls } = require("../utils/s3Storage");
 const { emitConsultationInProgress } = require("../sockets/consultationSocketHandler");
 const { sendConsultationFCM } = require("../utils/pushNotificationService");
 
@@ -885,6 +885,48 @@ const getActiveConsultation = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, consultation, "Active consultation fetched successfully"));
 });
 
+// @desc    Generate a temporary pre-signed URL for a specific investigation result file
+// @route   GET /api/consultations/:id/investigations/:investigationId/files/:fileId/signed-url
+// @access  Private (Patient / Doctor participant)
+//
+// The mobile app calls this endpoint when the user taps "View PDF".
+// It returns a URL that is valid for 15 minutes and bypasses R2 public-bucket
+// restrictions — no permanent public URL is ever sent to the client.
+const getSignedFileUrl = asyncHandler(async (req, res) => {
+  const consultation = await findConsultationForUser(req.params.id, req);
+
+  const investigation = consultation.investigations.id(req.params.investigationId);
+  if (!investigation) {
+    throw new ApiError(404, "Investigation not found");
+  }
+
+  const file = investigation.resultFiles.id(req.params.fileId);
+  if (!file) {
+    throw new ApiError(404, "File not found");
+  }
+
+  if (!file.fileUrl) {
+    throw new ApiError(400, "This file has no stored URL");
+  }
+
+  // 15-minute window — short enough to be secure, long enough to view the file
+  const EXPIRES_IN = 15 * 60; // seconds
+  const signedUrl = await generateSignedUrl(file.fileUrl, EXPIRES_IN);
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        signedUrl,
+        fileName: file.fileName,
+        mimeType: file.mimeType,
+        expiresInSeconds: EXPIRES_IN,
+      },
+      "Signed URL generated successfully",
+    ),
+  );
+});
+
 module.exports = {
   startConsultation,
   getConsultationById,
@@ -899,4 +941,5 @@ module.exports = {
   updateNotes,
   completeConsultation,
   getPrescription,
+  getSignedFileUrl,
 };

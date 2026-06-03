@@ -14,6 +14,7 @@ const {
   updateNotes,
   completeConsultation,
   getPrescription,
+  getSignedFileUrl,
 } = require("../controllers/consultationController");
 const verifyJWT = require("../middleware/auth");
 const authorizeRoles = require("../middleware/authorizeRoles");
@@ -154,5 +155,14 @@ router.patch(
 );
 
 router.get("/:id/rx", validateParamsObjectIds("id"), getPrescription);
+
+// Generate a temporary (15-min) pre-signed URL for a specific result file.
+// Mobile app calls this when the user taps "View PDF" / "View Image".
+// DO NOT expose the raw fileUrl to the client — always use this endpoint instead.
+router.get(
+  "/:id/investigations/:investigationId/files/:fileId/signed-url",
+  validateParamsObjectIds("id", "investigationId", "fileId"),
+  getSignedFileUrl,
+);
 
 module.exports = router;
