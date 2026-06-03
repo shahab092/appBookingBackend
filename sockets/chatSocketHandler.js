@@ -26,11 +26,48 @@ const chatSocketHandler = (io) => {
   chatNamespace.on("connection", (socket) => {
     console.log(`🔌 User connected to chat: ${socket.userId} (${socket.userModel})`);
 
-    // Join a specific chat room
-    socket.on("join_chat", async (chatId) => {
-      await socket.join(chatId);
-      const roomSize = chatNamespace.adapter.rooms.get(chatId)?.size || 0;
-      console.log(`[Chat] User ${socket.userId} (${socket.userModel}) joined room ${chatId} | room size: ${roomSize}`);
+    // Join a specific chat room.
+    // Verifies the connecting user is the doctor or patient of that chat
+    // before admitting them to the Socket.IO room. This enforces appointment
+    // isolation at the socket layer — a user cannot eavesdrop on another
+    // appointment's messages just by knowing the chatId.
+    socket.on("join_chat", async (chatId, callback) => {
+      try {
+        const chat = await Chat.findById(chatId);
+
+        if (!chat) {
+          console.warn(`[Chat] join_chat REJECTED (not found): ${socket.userId} → ${chatId}`);
+          if (callback) callback({ success: false, error: "Chat not found" });
+          return;
+        }
+
+        // socket.userId is the Doctor._id for doctors, User._id for patients.
+        // socket.userModel is "Doctor" or "User" (set during handshake auth).
+        const isDoctor  = socket.userModel === "Doctor" &&
+                          chat.doctorId.toString()   === socket.userId;
+        const isPatient = socket.userModel === "User" &&
+                          chat.patientId?.toString() === socket.userId;
+
+        if (!isDoctor && !isPatient) {
+          console.warn(
+            `[Chat] join_chat REJECTED (not a participant): ` +
+            `${socket.userModel} ${socket.userId} → room ${chatId}`
+          );
+          if (callback) callback({ success: false, error: "Not authorized to join this chat" });
+          return;
+        }
+
+        await socket.join(chatId);
+        const roomSize = chatNamespace.adapter.rooms.get(chatId)?.size || 0;
+        console.log(
+          `[Chat] ${socket.userModel} ${socket.userId} joined room ${chatId}` +
+          ` | room size: ${roomSize}`
+        );
+        if (callback) callback({ success: true, chatId });
+      } catch (err) {
+        console.error("[Chat] join_chat error:", err);
+        if (callback) callback({ success: false, error: err.message });
+      }
     });
 
     // Handle incoming messages
@@ -41,6 +78,22 @@ const chatSocketHandler = (io) => {
         // Verify chat exists
         const chat = await Chat.findById(chatId);
         if (!chat) throw new Error("Chat not found");
+
+        // Verify the sender is a participant of this specific chat room.
+        // This prevents a socket that somehow skipped join_chat from
+        // writing messages into another appointment's conversation.
+        const isParticipant =
+          (socket.userModel === "Doctor" && chat.doctorId.toString()   === socket.userId) ||
+          (socket.userModel === "User"   && chat.patientId?.toString() === socket.userId);
+
+        if (!isParticipant) {
+          console.warn(
+            `[Chat] send_message REJECTED (not a participant): ` +
+            `${socket.userModel} ${socket.userId} → room ${chatId}`
+          );
+          if (callback) callback({ success: false, error: "Not authorized to send messages in this chat" });
+          return;
+        }
 
         // Create message in DB
         const newMessage = await Message.create({

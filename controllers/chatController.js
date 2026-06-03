@@ -22,52 +22,22 @@ const getUserIdentity = async (user) => {
 // @route   POST /api/chat/init
 // @access  Private
 const initChat = asyncHandler(async (req, res) => {
-  const { appointmentId: passedAppointmentId } = req.body;
-  if (!passedAppointmentId) throw new ApiError(400, "appointmentId is required");
+  const { appointmentId } = req.body;
+  if (!appointmentId) throw new ApiError(400, "appointmentId is required");
 
-  const Appointment    = require("../models/Appointment");
-  const Consultation   = require("../models/Consultation");
+  const Appointment = require("../models/Appointment");
 
   const identity = await getUserIdentity(req.user);
 
-  // ── Step 1: Find the caller's active (IN_PROGRESS) consultation.
-  //
-  // The frontend may pass a stale or wrong appointmentId — especially when
-  // doctor and patient navigate from different parts of the app.  Instead of
-  // trusting the passed ID, we look up the active consultation for this user.
-  // Both doctor and patient share the SAME consultation document, so they will
-  // always derive the same appointmentId and land in the same chat room.
-  // This is a backend-only fix that works with any APK version.
-  let activeConsultation = null;
-  if (identity.type === "Doctor") {
-    activeConsultation = await Consultation.findOne({
-      doctorId: identity.id,
-      status:   "IN_PROGRESS",
-    });
-  } else {
-    activeConsultation = await Consultation.findOne({
-      patientId: req.user._id,
-      status:    "IN_PROGRESS",
-    });
-  }
-
-  // Use the active consultation's appointmentId when available.
-  // Fall back to the passed value only if no active consultation exists.
-  const effectiveAppointmentId = activeConsultation
-    ? activeConsultation.appointmentId.toString()
-    : passedAppointmentId;
-
-  console.log(
-    `[initChat] ${identity.type} ${identity.id}` +
-    ` | passed: ${passedAppointmentId}` +
-    ` | effective: ${effectiveAppointmentId}` +
-    ` | consultationId: ${activeConsultation?._id || "none (fallback)"}`
-  );
-
-  // ── Step 2: Fetch appointment and verify the caller is a participant
-  const appointment = await Appointment.findById(effectiveAppointmentId);
+  // ── Step 1: Fetch the exact appointment the caller passed.
+  //    appointmentId IS the primary key for chat isolation.
+  //    Do NOT replace it with another IN_PROGRESS consultation —
+  //    a doctor or patient can have multiple concurrent appointments,
+  //    and each one must have its own separate chat room.
+  const appointment = await Appointment.findById(appointmentId);
   if (!appointment) throw new ApiError(404, "Appointment not found");
 
+  // ── Step 2: Verify the caller is a participant of THIS appointment
   const isParticipant =
     (identity.type === "Doctor" &&
       appointment.doctorId.toString() === identity.id.toString()) ||
@@ -78,19 +48,21 @@ const initChat = asyncHandler(async (req, res) => {
   if (!isParticipant) {
     console.warn(
       `[initChat] REJECTED: ${identity.type} ${identity.id}` +
-      ` is not a participant of appointment ${effectiveAppointmentId}`
+      ` is not a participant of appointment ${appointmentId}`
     );
     throw new ApiError(403, "You are not authorized to join the chat for this appointment");
   }
 
-  // ── Step 3: Atomic find-or-create (prevents race-condition duplicates)
+  // ── Step 3: Atomic find-or-create — one chat room per appointmentId.
+  //    The unique index on Chat.appointmentId prevents duplicates even
+  //    under concurrent requests.
   const rawChat = await Chat.findOneAndUpdate(
-    { appointmentId: effectiveAppointmentId },
+    { appointmentId },
     {
       $setOnInsert: {
-        appointmentId: effectiveAppointmentId,
-        doctorId:      appointment.doctorId,
-        patientId:     appointment.patientId,
+        appointmentId,
+        doctorId:  appointment.doctorId,
+        patientId: appointment.patientId,
       },
     },
     { upsert: true, new: true, setDefaultsOnInsert: true }
@@ -100,19 +72,31 @@ const initChat = asyncHandler(async (req, res) => {
     .populate("doctorId", "name image speciality")
     .populate("patientId", "name email image");
 
-  console.log(`[initChat] ✅ chatId: ${chat._id} for appointmentId: ${effectiveAppointmentId}`);
+  console.log(`[initChat] ✅ chatId: ${chat._id} for appointmentId: ${appointmentId}`);
 
   res.status(200).json(new ApiResponse(200, chat, "Chat initialized"));
 });
 
 
-// @desc    Get all active chats for the logged-in user
+// @desc    Get chats for the logged-in user
 // @route   GET /api/chat
+// @route   GET /api/chat?appointmentId=<id>   ← returns the single chat for that appointment
 // @access  Private
 const getChats = asyncHandler(async (req, res) => {
   const identity = await getUserIdentity(req.user);
 
-  const query = identity.type === "Doctor" ? { doctorId: identity.id } : { patientId: identity.id };
+  // Base filter — always scoped to the calling user so they can only
+  // ever see their own chats.
+  const query = identity.type === "Doctor"
+    ? { doctorId: identity.id }
+    : { patientId: identity.id };
+
+  // Optional: narrow to a single appointment's chat room.
+  // Useful when the frontend navigates directly from an appointment card
+  // without loading the full inbox first.
+  if (req.query.appointmentId) {
+    query.appointmentId = req.query.appointmentId;
+  }
 
   const chats = await Chat.find(query)
     .populate("doctorId", "name image speciality")
