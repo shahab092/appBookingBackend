@@ -202,8 +202,10 @@ const startConsultation = asyncHandler(async (req, res) => {
         req,
         "Consultation started",
       );
-      await existing.save();
     }
+
+    existing.patientStatus = "WAITING_FOR_PATIENT";
+    await existing.save();
 
     if (appointment.status !== "inprogress") {
       appointment.status = "inprogress";
@@ -222,6 +224,7 @@ const startConsultation = asyncHandler(async (req, res) => {
         appointmentId:  existing.appointmentId,
         doctorId:       existing.doctorId,
         status:         "IN_PROGRESS",
+        patientStatus:  existing.patientStatus,
         startedAt:      existing.startedAt,
         doctor:         serialized?.doctorId,
         message:        "Your doctor has started the consultation. Please join now.",
@@ -252,6 +255,7 @@ const startConsultation = asyncHandler(async (req, res) => {
     patientId: appointment.patientId,
     doctorId: doctor._id,
     status: "IN_PROGRESS",
+    patientStatus: "WAITING_FOR_PATIENT",
     startedAt: new Date(),
   });
 
@@ -277,6 +281,7 @@ const startConsultation = asyncHandler(async (req, res) => {
       appointmentId: consultation.appointmentId,
       doctorId: consultation.doctorId,
       status: "IN_PROGRESS",
+      patientStatus: consultation.patientStatus,
       startedAt: consultation.startedAt,
       doctor: serialized.doctorId, // populated doctor info
       message: "Your doctor has started the consultation. Please join now.",

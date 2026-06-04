@@ -304,6 +304,12 @@ const consultationSchema = new mongoose.Schema(
       default: "NOT_STARTED",
       index: true,
     },
+    patientStatus: {
+      type: String,
+      enum: ["WAITING_FOR_PATIENT", "PATIENT_JOINED", "PATIENT_REJECTED"],
+      default: "WAITING_FOR_PATIENT",
+      index: true,
+    },
     symptoms: [symptomSchema],
     investigations: [investigationSchema],
     diagnoses: [diagnosisSchema],
