@@ -932,6 +932,133 @@ const getSignedFileUrl = asyncHandler(async (req, res) => {
   );
 });
 
+// @desc    Get list of all prescriptions for the current patient
+// @route   GET /api/consultations/patient/prescriptions
+// @access  Private (Patient only)
+const getPatientPrescriptionsList = asyncHandler(async (req, res) => {
+  const consultations = await Consultation.find({
+    patientId: req.user._id,
+    status: "COMPLETED",
+  })
+    .populate("doctorId", "name speciality")
+    .sort({ completedAt: -1 });
+
+  const prescriptionsList = consultations.map((consultation) => ({
+    consultationId: consultation._id.toString(),
+    rxId: `#RX-${consultation._id.toString().slice(-4).toUpperCase()}`,
+    doctorName: consultation.doctorId?.name || "Unknown Doctor",
+    speciality: consultation.doctorId?.speciality || "General",
+    completedAt: consultation.completedAt,
+    medicinesCount: consultation.medications?.length || 0,
+    testsCount: consultation.investigations?.length || 0,
+    status: consultation.status,
+  }));
+
+  res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        prescriptionsList,
+        "Patient prescriptions fetched successfully",
+      ),
+    );
+});
+
+// @desc    Get list of all prescriptions created by the current doctor
+// @route   GET /api/consultations/doctor/prescriptions
+// @access  Private (Doctor only)
+const getDoctorPrescriptionsList = asyncHandler(async (req, res) => {
+  const doctor = await getDoctorProfileForUser(req.user._id);
+  if (!doctor) {
+    throw new ApiError(404, "Doctor profile not found");
+  }
+
+  const consultations = await Consultation.find({
+    doctorId: doctor._id,
+    status: "COMPLETED",
+  })
+    .populate("patientId", "whatsappnumber")
+    .sort({ completedAt: -1 });
+
+  const prescriptionsList = consultations.map((consultation) => ({
+    consultationId: consultation._id.toString(),
+    rxId: `#RX-${consultation._id.toString().slice(-4).toUpperCase()}`,
+    patientPhone: consultation.patientId?.whatsappnumber || "N/A",
+    completedAt: consultation.completedAt,
+    medicinesCount: consultation.medications?.length || 0,
+    testsCount: consultation.investigations?.length || 0,
+    status: consultation.status,
+  }));
+
+  res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        prescriptionsList,
+        "Doctor prescriptions fetched successfully",
+      ),
+    );
+});
+
+// @desc    Get full consultation details by ID
+// @route   GET /api/consultations/details/:id
+// @access  Private (Doctor/Patient participant)
+const getFullConsultationDetails = asyncHandler(async (req, res) => {
+  const consultation = await findConsultationForUser(req.params.id, req);
+
+  const populated = await Consultation.findById(consultation._id)
+    .populate("appointmentId")
+    .populate("patientId", "whatsappnumber role status createdAt")
+    .populate("doctorId", "name email phone speciality image pmdcRegistrationNumber");
+
+  const patientProfile = await Patient.findOne({
+    userId: populated.patientId._id,
+  }).select("-password");
+
+  const fullConsultation = {
+    consultationId: populated._id,
+    status: populated.status,
+    patientStatus: populated.patientStatus,
+    patient: {
+      user: populated.patientId,
+      profile: patientProfile,
+      name:
+        patientProfile?.name ||
+        populated.appointmentId?.patientName ||
+        "Registered patient",
+      phone:
+        populated.patientId?.whatsappnumber ||
+        populated.appointmentId?.patientPhone,
+      email: populated.appointmentId?.patientEmail,
+    },
+    doctor: populated.doctorId,
+    appointment: populated.appointmentId,
+    symptoms: populated.symptoms,
+    investigations: populated.investigations,
+    diagnoses: populated.diagnoses,
+    medications: populated.medications,
+    followUp: populated.followUp,
+    notes: populated.notes,
+    logs: populated.logs,
+    createdAt: populated.createdAt,
+    updatedAt: populated.updatedAt,
+    startedAt: populated.startedAt,
+    completedAt: populated.completedAt,
+  };
+
+  res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        fullConsultation,
+        "Full consultation details fetched successfully",
+      ),
+    );
+});
+
 module.exports = {
   startConsultation,
   getConsultationById,
@@ -947,4 +1074,7 @@ module.exports = {
   completeConsultation,
   getPrescription,
   getSignedFileUrl,
+  getPatientPrescriptionsList,
+  getDoctorPrescriptionsList,
+  getFullConsultationDetails,
 };

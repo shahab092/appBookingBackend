@@ -15,6 +15,9 @@ const {
   completeConsultation,
   getPrescription,
   getSignedFileUrl,
+  getPatientPrescriptionsList,
+  getDoctorPrescriptionsList,
+  getFullConsultationDetails,
 } = require("../controllers/consultationController");
 const verifyJWT = require("../middleware/auth");
 const authorizeRoles = require("../middleware/authorizeRoles");
@@ -71,6 +74,18 @@ const handleResultUpload = (req, res, next) => {
 
 router.use(verifyJWT);
 
+router.get(
+  "/patient/prescriptions",
+  authorizeRoles("patient"),
+  getPatientPrescriptionsList,
+);
+
+router.get(
+  "/doctor/prescriptions",
+  authorizeRoles("doctor"),
+  getDoctorPrescriptionsList,
+);
+
 router.post(
   "/start",
   authorizeRoles("doctor"),
@@ -86,6 +101,12 @@ router.get(
   "/appointment/:appointmentId",
   validateParamsObjectIds("appointmentId"),
   getConsultationByAppointmentId,
+);
+
+router.get(
+  "/details/:id",
+  validateParamsObjectIds("id"),
+  getFullConsultationDetails,
 );
 
 router.get("/:id", validateParamsObjectIds("id"), getConsultationById);
