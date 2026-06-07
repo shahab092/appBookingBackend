@@ -224,8 +224,113 @@ const sendConsultationFCM = async (patientUserId, { consultationId, appointmentI
   }
 };
 
+/**
+ * Sends a HIGH-PRIORITY data-only FCM message for incoming video calls.
+ * Data-only (no `notification` block) so Android delivers it headlessly even when
+ * the app is killed — the RN Firebase background handler shows the incoming call UI.
+ *
+ * @param {string} calleeUserId - User._id of the person receiving the call
+ * @param {{ callerName, callerId, consultationId, appointmentId, offer }} payload
+ */
+const sendVideoCallFCM = async (calleeUserId, { callerName, callerId, consultationId, appointmentId, offer }) => {
+  try {
+    const deviceTokens = await DeviceToken.find({ user: calleeUserId });
+    if (!deviceTokens || deviceTokens.length === 0) {
+      console.log(`[FCM] No device tokens for callee ${calleeUserId}. Skipping FCM video call.`);
+      return { success: true, pushSentCount: 0 };
+    }
+
+    if (!admin || !admin.apps || admin.apps.length === 0) {
+      console.warn("⚠️ Firebase Admin not available. Skipping video call FCM.");
+      return { success: true, pushSentCount: 0 };
+    }
+
+    const tokens = deviceTokens.map((dt) => dt.token);
+
+    // Check if offer can fit in the 4KB FCM data limit
+    // Reserve ~500 bytes for metadata, aim to keep offer < 3KB
+    let offerString = "";
+    if (offer) {
+      offerString = typeof offer === "string" ? offer : JSON.stringify(offer);
+      if (Buffer.byteLength(offerString, "utf8") < 3000) {
+        // Safe to include
+        console.log(`[FCM] Video offer size: ${Buffer.byteLength(offerString, "utf8")} bytes — including in payload`);
+      } else {
+        // Too large — omit and let frontend reconnect socket to fetch
+        console.log(`[FCM] Video offer size: ${Buffer.byteLength(offerString, "utf8")} bytes — exceeds 3KB limit, omitting from payload`);
+        offerString = "";
+      }
+    }
+
+    // Build data-only messages (no `notification` block — data-only for background delivery)
+    const messages = tokens.map((token) => {
+      const dataPayload = {
+        type: "INCOMING_VIDEO_CALL",
+        callerName: String(callerName || "Unknown"),
+        callerId: String(callerId || ""),
+        consultationId: String(consultationId || ""),
+        appointmentId: String(appointmentId || ""),
+      };
+
+      // Add offer only if it's small enough
+      if (offerString) {
+        dataPayload.offer = offerString;
+      }
+
+      return {
+        token,
+        // NO notification block — keeps it as a data message
+        data: dataPayload,
+        android: {
+          priority: "high",
+        },
+        apns: {
+          headers: {
+            "apns-priority": "10",
+            "apns-push-type": "background",
+          },
+          payload: {
+            aps: {
+              "content-available": 1,
+            },
+          },
+        },
+      };
+    });
+
+    const response = await admin.messaging().sendEach(messages);
+    console.log(`[FCM] Video call FCM sent: ${response.successCount}/${messages.length}`);
+
+    // Prune stale tokens
+    const tokensToDelete = [];
+    response.responses.forEach((res, idx) => {
+      if (!res.success) {
+        const code = res.error?.code || "";
+        if (
+          code === "messaging/registration-token-not-registered" ||
+          code === "messaging/invalid-registration-token" ||
+          code === "messaging/invalid-argument"
+        ) {
+          tokensToDelete.push(tokens[idx]);
+        }
+      }
+    });
+    if (tokensToDelete.length > 0) {
+      await DeviceToken.deleteMany({ token: { $in: tokensToDelete } });
+      console.log(`[FCM] Pruned ${tokensToDelete.length} stale tokens.`);
+    }
+
+    return { success: true, pushSentCount: response.successCount };
+  } catch (error) {
+    console.error("[FCM] sendVideoCallFCM error:", error);
+    // Non-fatal — socket already notified the callee if app is open
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = {
   sendNotificationToUser,
   sendNotificationToMultipleUsers,
   sendConsultationFCM,
+  sendVideoCallFCM,
 };

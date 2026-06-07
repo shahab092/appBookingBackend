@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Doctor = require('../models/Docters');
+const { sendVideoCallFCM } = require('../utils/pushNotificationService');
 
 const videoSocketHandler = (io) => {
   io.on("connection", (socket) => {
@@ -100,6 +101,32 @@ const videoSocketHandler = (io) => {
           console.warn(`[VideoSocket] user-offline sent back to caller ${socket.userId}`);
           socket.emit("user-offline", { targetId });
         }
+
+        // ── Send FCM push for offline/background app delivery ──
+        // Get the callee's User ID (targetId might be Doctor._id, need to resolve)
+        let calleeUserId = targetId;
+        if (mongoose.Types.ObjectId.isValid(String(targetId))) {
+          try {
+            const doctor = await Doctor.findById(targetId).select('userId').lean();
+            if (doctor && doctor.userId) {
+              calleeUserId = doctor.userId;
+            }
+          } catch (err) {
+            console.warn('[VideoSocket] Could not resolve doctor userId for FCM:', err.message);
+          }
+        }
+
+        // Send data-only FCM notification for background delivery
+        sendVideoCallFCM(calleeUserId, {
+          callerName: fromName || socket.userId,
+          callerId: socket.userId,
+          consultationId: "", // Optional: could be passed in event if available
+          appointmentId: "",  // Optional: could be passed in event if available
+          offer,
+        }).catch(err => {
+          console.error('[VideoSocket] FCM video call notification failed:', err.message);
+          // Non-fatal — socket delivery already attempted
+        });
       } catch (err) {
         console.error('[VideoSocket] call-user error:', err.message);
         socket.emit("user-offline", { targetId });
