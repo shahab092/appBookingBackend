@@ -28,6 +28,27 @@ const videoSocketHandler = (io) => {
       return null;
     };
 
+    // Normalize target identifiers that may be passed as objects from clients
+    const normalizeTargetId = (target) => {
+      if (!target) return null;
+      if (typeof target === 'string') return target;
+      if (typeof target === 'object') {
+        // Common possible shapes from clients
+        if (target._id) return String(target._id);
+        if (target.id) return String(target.id);
+        if (target.userId) return String(target.userId);
+        // fallback to JSON if it's meaningful
+        try {
+          const asString = JSON.stringify(target);
+          // avoid returning plain "[object Object]"
+          if (asString && asString !== '{}') return asString;
+        } catch (e) {
+          // ignore
+        }
+      }
+      return String(target);
+    };
+
     // ── Smart lookup: also resolves Doctor model _id → User _id ──────────
     // Patients store doctorProfileId (Doctor._id) as targetId.
     // Doctors register with user._id (User._id). This bridges the gap.
@@ -87,9 +108,10 @@ const videoSocketHandler = (io) => {
 
     // ── call-user ─────────────────────────────────────────────────────────
     socket.on("call-user", async ({ targetId, offer, fromName }) => {
-      console.log(`[VideoSocket] call-user from ${socket.userId} to ${targetId}`);
+      const normalizedTarget = normalizeTargetId(targetId);
+      console.log(`[VideoSocket] call-user from ${socket.userId} to ${normalizedTarget}`);
       try {
-        const targetSocket = await resolveTargetSocket(targetId);
+        const targetSocket = await resolveTargetSocket(normalizedTarget);
         if (targetSocket) {
           targetSocket.emit("incoming-call", {
             from: socket.userId,
@@ -98,15 +120,15 @@ const videoSocketHandler = (io) => {
           });
           console.log(`[VideoSocket] incoming-call sent to socket ${targetSocket.id} ✅`);
         } else {
-          console.log(`[VideoSocket] target socket not connected for ${targetId}; using FCM fallback.`);
+          console.log(`[VideoSocket] target socket not connected for ${normalizedTarget}; using FCM fallback.`);
         }
 
         // ── Send FCM push for offline/background app delivery ──
-        // Get the callee's User ID (targetId might be Doctor._id, need to resolve)
-        let calleeUserId = targetId;
-        if (mongoose.Types.ObjectId.isValid(String(targetId))) {
+        // Get the callee's User ID (normalizedTarget might be Doctor._id, need to resolve)
+        let calleeUserId = normalizedTarget;
+        if (mongoose.Types.ObjectId.isValid(String(normalizedTarget))) {
           try {
-            const doctor = await Doctor.findById(targetId).select('userId').lean();
+            const doctor = await Doctor.findById(normalizedTarget).select('userId').lean();
             if (doctor && doctor.userId) {
               calleeUserId = doctor.userId;
             }
@@ -134,13 +156,14 @@ const videoSocketHandler = (io) => {
 
     // ── answer-call ───────────────────────────────────────────────────────
     socket.on("answer-call", async ({ targetId, answer }) => {
-      console.log(`[VideoSocket] answer-call from ${socket.userId} to ${targetId}`);
+      const normalizedTarget = normalizeTargetId(targetId);
+      console.log(`[VideoSocket] answer-call from ${socket.userId} to ${normalizedTarget}`);
       try {
-        const callerSocket = await resolveTargetSocket(targetId);
+        const callerSocket = await resolveTargetSocket(normalizedTarget);
         if (callerSocket) {
           callerSocket.emit("call-answered", { from: socket.userId, answer });
         } else {
-          console.warn(`[VideoSocket] answer-call: caller ${targetId} socket not found`);
+          console.warn(`[VideoSocket] answer-call: caller ${normalizedTarget} socket not found`);
         }
       } catch (err) {
         console.error('[VideoSocket] answer-call error:', err.message);
@@ -149,8 +172,9 @@ const videoSocketHandler = (io) => {
 
     // ── ice-candidate ─────────────────────────────────────────────────────
     socket.on("ice-candidate", async ({ targetId, candidate }) => {
+      const normalizedTarget = normalizeTargetId(targetId);
       try {
-        const targetSocket = await resolveTargetSocket(targetId);
+        const targetSocket = await resolveTargetSocket(normalizedTarget);
         if (targetSocket) {
           targetSocket.emit("ice-candidate", { from: socket.userId, candidate });
         }
@@ -161,9 +185,10 @@ const videoSocketHandler = (io) => {
 
     // ── end-call ──────────────────────────────────────────────────────────
     socket.on("end-call", async (targetId) => {
-      console.log(`[VideoSocket] end-call from ${socket.userId} to ${targetId}`);
+      const normalizedTarget = normalizeTargetId(targetId);
+      console.log(`[VideoSocket] end-call from ${socket.userId} to ${normalizedTarget}`);
       try {
-        const targetSocket = await resolveTargetSocket(targetId);
+        const targetSocket = await resolveTargetSocket(normalizedTarget);
         if (targetSocket) {
           targetSocket.emit("call-ended", { from: socket.userId });
         }
@@ -174,8 +199,9 @@ const videoSocketHandler = (io) => {
 
     // ── reject-call ───────────────────────────────────────────────────────
     socket.on("reject-call", async ({ targetId }) => {
+      const normalizedTarget = normalizeTargetId(targetId);
       try {
-        const targetSocket = await resolveTargetSocket(targetId);
+        const targetSocket = await resolveTargetSocket(normalizedTarget);
         if (targetSocket) {
           targetSocket.emit("call-rejected", { from: socket.userId });
         }
