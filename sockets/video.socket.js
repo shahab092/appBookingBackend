@@ -98,8 +98,7 @@ const videoSocketHandler = (io) => {
           });
           console.log(`[VideoSocket] incoming-call sent to socket ${targetSocket.id} ✅`);
         } else {
-          console.warn(`[VideoSocket] user-offline sent back to caller ${socket.userId}`);
-          socket.emit("user-offline", { targetId });
+          console.log(`[VideoSocket] target socket not connected for ${targetId}; using FCM fallback.`);
         }
 
         // ── Send FCM push for offline/background app delivery ──
@@ -129,7 +128,7 @@ const videoSocketHandler = (io) => {
         });
       } catch (err) {
         console.error('[VideoSocket] call-user error:', err.message);
-        socket.emit("user-offline", { targetId });
+        // Keep caller ringing and rely on FCM fallback if available.
       }
     });
 
