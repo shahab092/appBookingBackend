@@ -1,7 +1,6 @@
 const admin = require("../config/firebaseAdmin");
 const DeviceToken = require("../models/DeviceToken");
 const Notification = require("../models/Notification");
-const { getIo } = require("../sockets");
 
 /**
  * Sends a notification to a specific user via multiple channels:
@@ -26,6 +25,8 @@ const sendNotificationToUser = async (userId, { title, body, data = {}, type = "
     });
 
     // 2. Deliver via Socket.io (In-app realtime delivery)
+    // Lazy-require to avoid circular dependency when sockets import this module
+    const { getIo } = require("../sockets");
     const io = getIo();
     if (io) {
       io.to(userId.toString()).emit("new-notification", notification);
