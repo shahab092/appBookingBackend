@@ -29,9 +29,10 @@ const getRefreshTokenFromRequest = (req) => {
 // Builds the user object returned in API responses.
 // doctorProfileId is the Doctor model _id — different from user._id (User model).
 // Patients use it to route video calls to the correct doctor socket.
-const buildUserResponse = (user, doctorProfileId = null) => ({
+const buildUserResponse = (user, doctorProfileId = null, name = getTokenName(user)) => ({
   _id: user._id,
   whatsappnumber: user.whatsappnumber,
+  name,
   role: user.role,
   isVerified: user.isVerified,
   status: user.status,
@@ -194,7 +195,8 @@ const login = asyncHandler(async (req, res) => {
   user.refreshToken = refreshToken;
   await user.save();
 
-  const loggedInUser = buildUserResponse(user, doctorProfileId);
+  const userName = getTokenName(user, doctorRecord);
+  const loggedInUser = buildUserResponse(user, doctorProfileId, userName);
 
   res.status(200)
     .cookie("refreshToken", refreshToken, cookieOptions)
@@ -229,8 +231,9 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
   const doctorRecord = user.role === "doctor"
     ? await Doctor.findOne({ userId: user._id })
     : null;
+  const userName = getTokenName(user, doctorRecord);
 
-  const newAccessToken = generateAccessToken(user, getTokenName(user, doctorRecord));
+  const newAccessToken = generateAccessToken(user, userName);
   const newRefreshToken = generateRefreshToken(user);
 
   user.refreshToken = newRefreshToken;
@@ -242,7 +245,7 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
       new ApiResponse(200, {
         accessToken: newAccessToken,
         refreshToken: newRefreshToken,
-        user: buildUserResponse(user),
+        user: buildUserResponse(user, null, userName),
       }, "Access token refreshed successfully")
     );
 });
