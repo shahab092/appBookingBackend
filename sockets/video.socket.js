@@ -30,6 +30,7 @@ const videoSocketHandler = (io) => {
 
     // Normalize target identifiers that may be passed as objects from clients
     const normalizeTargetId = (target) => {
+      console.log(target,"targetbyshahab")
       if (!target) return null;
       if (typeof target === 'string') return target;
       if (typeof target === 'object') {
@@ -109,7 +110,7 @@ const videoSocketHandler = (io) => {
     // ── call-user ─────────────────────────────────────────────────────────
     socket.on("call-user", async ({ targetId, offer, fromName }) => {
       const normalizedTarget = normalizeTargetId(targetId);
-      console.log(`[VideoSocket] call-user from ${socket.userId} to ${normalizedTarget}`);
+      console.log(`[VideoSocket] shaahb call-user from ${socket.userId} to ${normalizedTarget}`);
       try {
         const targetSocket = await resolveTargetSocket(normalizedTarget);
         if (targetSocket) {
@@ -118,9 +119,9 @@ const videoSocketHandler = (io) => {
             fromName: fromName || socket.userId,
             offer,
           });
-          console.log(`[VideoSocket] incoming-call sent to socket ${targetSocket.id} ✅`);
+          console.log(`[VideoSocket] shahab incoming-call sent to socket ${targetSocket.id} ✅`);
         } else {
-          console.log(`[VideoSocket] target socket not connected for ${normalizedTarget}; using FCM fallback.`);
+          console.log(`[VideoSocket]  shahab target socket not connected for ${normalizedTarget}; using FCM fallback.`);
         }
 
         // ── Send FCM push for offline/background app delivery ──

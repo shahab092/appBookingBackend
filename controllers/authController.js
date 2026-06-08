@@ -5,6 +5,7 @@ const { OAuth2Client } = require("google-auth-library");
 const User = require("../models/User");
 const Otp = require("../models/Otp");
 const Patient = require("../models/Patient");
+const Doctor = require("../models/Docters");
 const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require('../utils/ApiResponse');
@@ -40,12 +41,19 @@ const buildUserResponse = (user, doctorProfileId = null) => ({
 
 // ── Token helpers ────────────────────────────────────────────────────────────
 
-const generateAccessToken = (user) => {
+const getTokenName = (user, doctorRecord = null) => {
+  if (user.role === "doctor") return doctorRecord?.name ;
+  if (user.role === "patient") return "Patient";
+  return user.role";
+};
+
+const generateAccessToken = (user, name) => {
   return jwt.sign(
     {
       id: user._id,
       whatsappnumber: user.whatsappnumber,
       role: user.role,
+      name,
     },
     process.env.ACCESS_TOKEN_SECRET,
     { expiresIn: process.env.ACCESS_TOKEN_EXPIRY }
@@ -171,16 +179,16 @@ const login = asyncHandler(async (req, res) => {
   // This is the Doctor model _id — patients use it to route video calls.
   // It is different from user._id (User model _id).
   let doctorProfileId = null;
+  let doctorRecord = null;
   if (user.role === 'doctor') {
-    const Doctor = require('../models/Docters');
-    const doctorRecord = await Doctor.findOne({ userId: user._id });
+    doctorRecord = await Doctor.findOne({ userId: user._id });
     if (doctorRecord) {
       user._doc.doctorStatus = doctorRecord.status;
       doctorProfileId = doctorRecord._id.toString();
     }
   }
 
-  const accessToken = generateAccessToken(user);
+  const accessToken = generateAccessToken(user, getTokenName(user, doctorRecord));
   const refreshToken = generateRefreshToken(user);
 
   user.refreshToken = refreshToken;
@@ -218,7 +226,11 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
   if (!user || user.refreshToken !== refreshToken) throw new ApiError(401, "Invalid refresh token");
   if (!user.isVerified) throw new ApiError(401, "User is not verified");
 
-  const newAccessToken = generateAccessToken(user);
+  const doctorRecord = user.role === "doctor"
+    ? await Doctor.findOne({ userId: user._id })
+    : null;
+
+  const newAccessToken = generateAccessToken(user, getTokenName(user, doctorRecord));
   const newRefreshToken = generateRefreshToken(user);
 
   user.refreshToken = newRefreshToken;
