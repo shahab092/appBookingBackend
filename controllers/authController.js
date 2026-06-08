@@ -44,7 +44,7 @@ const buildUserResponse = (user, doctorProfileId = null) => ({
 const getTokenName = (user, doctorRecord = null) => {
   if (user.role === "doctor") return doctorRecord?.name ;
   if (user.role === "patient") return "Patient";
-  return user.role";
+  return user.role
 };
 
 const generateAccessToken = (user, name) => {
