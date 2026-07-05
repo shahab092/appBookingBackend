@@ -764,7 +764,7 @@ const getAvailableSlots = asyncHandler(async (req, res) => {
     doctorId,
     date,
     appointmentType,
-    status: { $in: ["pending", "booked", "confirmed"] },
+    status: { $in: ["pending", "booked", "confirmed","completed"] },
     isDeleted: false,
   };
 
