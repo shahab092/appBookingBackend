@@ -118,6 +118,23 @@ const investigationSchema = new mongoose.Schema(
       ref: "User",
     },
     uploadedAt: Date,
+    isNormal: {
+      type: Boolean,
+      default: true,
+    },
+    doctorReviewNotes: {
+      type: String,
+      trim: true,
+    },
+    reviewedByRole: {
+      type: String,
+      enum: ["doctor"],
+    },
+    reviewedByUser: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    reviewedAt: Date,
   },
   { _id: true },
 );
@@ -222,6 +239,14 @@ const noteSchema = new mongoose.Schema(
     note: {
       type: String,
       required: true,
+      trim: true,
+    },
+    isNormal: {
+      type: Boolean,
+      default: true,
+    },
+    doctorNotes: {
+      type: String,
       trim: true,
     },
     addedByRole: {

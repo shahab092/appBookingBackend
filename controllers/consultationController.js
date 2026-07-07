@@ -512,7 +512,24 @@ const uploadInvestigationResult = asyncHandler(async (req, res) => {
     investigation.resultNotes = req.body.resultNotes;
   }
 
-  investigation.status = "RESULT_UPLOADED";
+  // Doctor can mark result as normal/abnormal with review notes
+  if (req.body.isNormal !== undefined) {
+    investigation.isNormal = req.body.isNormal;
+    // Require doctor notes if marking as not normal
+    if (req.body.isNormal === false && !String(req.body.doctorReviewNotes || "").trim()) {
+      throw new ApiError(400, "doctorReviewNotes is required when isNormal is false");
+    }
+    if (req.body.doctorReviewNotes !== undefined) {
+      investigation.doctorReviewNotes = req.body.doctorReviewNotes;
+    }
+    investigation.reviewedByRole = normalizeRole(req.user.role);
+    investigation.reviewedByUser = req.user._id;
+    investigation.reviewedAt = new Date();
+    investigation.status = "REVIEWED";
+  } else {
+    investigation.status = "RESULT_UPLOADED";
+  }
+
   investigation.uploadedByRole = normalizeRole(req.user.role);
   investigation.uploadedByUser = req.user._id;
   investigation.uploadedAt = new Date();
@@ -740,9 +757,17 @@ const updateNotes = asyncHandler(async (req, res) => {
   const action = req.body.action || "add";
 
   if (action === "add") {
+    const isNormal = req.body.isNormal !== undefined ? req.body.isNormal : true;
+
+    if (isNormal === false && !String(req.body.doctorNotes || "").trim()) {
+      throw new ApiError(400, "doctorNotes is required when isNormal is false");
+    }
+
     consultation.notes.push({
       noteType: req.body.noteType,
       note: req.body.note,
+      isNormal,
+      doctorNotes: req.body.doctorNotes,
       addedByRole: "doctor",
       addedByUser: req.user._id,
       addedAt: new Date(),
@@ -754,9 +779,14 @@ const updateNotes = asyncHandler(async (req, res) => {
     const note = consultation.notes.id(req.body.noteId);
     if (!note) throw new ApiError(404, "Note not found");
 
-    ["noteType", "note"].forEach((field) => {
+    ["noteType", "note", "isNormal", "doctorNotes"].forEach((field) => {
       if (req.body[field] !== undefined) note[field] = req.body[field];
     });
+
+    if (note.isNormal === false && !String(note.doctorNotes || "").trim()) {
+      throw new ApiError(400, "doctorNotes is required when isNormal is false");
+    }
+
     addLog(consultation, "notes", "UPDATE", req, `Updated note: ${note.noteType}`);
   }
 

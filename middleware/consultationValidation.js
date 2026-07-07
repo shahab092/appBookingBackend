@@ -166,6 +166,16 @@ const validateNote = (req, res, next) => {
 
   if (action === "add") {
     requireFields(req.body, ["noteType", "note"]);
+
+    if (req.body.isNormal === false && !String(req.body.doctorNotes || "").trim()) {
+      throw new ApiError(400, "doctorNotes is required when isNormal is false");
+    }
+  }
+
+  if (action === "update") {
+    if (req.body.isNormal === false && !String(req.body.doctorNotes ?? "").trim()) {
+      throw new ApiError(400, "doctorNotes is required when isNormal is false");
+    }
   }
 
   next();
