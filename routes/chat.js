@@ -1,4 +1,5 @@
 const express = require("express");
+const path = require("path");
 const router = express.Router();
 const multer = require("multer");
 const authenticate = require("../middleware/auth");
@@ -16,19 +17,14 @@ const upload = multer({
     fileSize: 20 * 1024 * 1024, // 20MB limit for media/voice
   },
   fileFilter: (req, file, cb) => {
-    // Allow images, pdfs, and audio files
-    const allowedTypes = [
-      "application/pdf",
-      "image/jpeg",
-      "image/png",
-      "image/webp",
-      "image/jpg",
-      "audio/mpeg", // mp3
-      "audio/webm", // webm (browser recorded)
-      "audio/wav",
-      "audio/ogg"
-    ];
-    if (allowedTypes.includes(file.mimetype)) {
+    const mimeType = (file.mimetype || "").toLowerCase();
+    const extension = path.extname(file.originalname || "").toLowerCase();
+
+    const isPdf = mimeType === "application/pdf" || extension === ".pdf";
+    const isImage = mimeType.startsWith("image/") || [".jpg", ".jpeg", ".png", ".webp", ".gif"].includes(extension);
+    const isAudio = mimeType.startsWith("audio/") || [".mp3", ".wav", ".ogg", ".oga", ".m4a", ".aac", ".mp4", ".webm", ".flac", ".amr", ".3gp", ".3gpp"].includes(extension);
+
+    if (isPdf || isImage || isAudio) {
       cb(null, true);
     } else {
       cb(new Error("Invalid file type. Only PDFs, Images, and Audio files are allowed."), false);
